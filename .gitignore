@@ -1,0 +1,9 @@
+# MacOS specific
+.DS_Store
+
+# IDE specific
+.cache
+.vscode
+build
+.idea
+cmake-build-debug
