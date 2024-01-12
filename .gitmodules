@@ -2,3 +2,7 @@
 	path = deps/asio
 	url = https://github.com/chriskohlhoff/asio/
 	shallow = true
+[submodule "deps/googletest"]
+	path = deps/googletest
+	url = https://github.com/google/googletest
+	shallow = true

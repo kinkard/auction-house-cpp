@@ -18,3 +18,5 @@ target_link_libraries(server asio sqlite3)
 # Client
 add_executable(client src/client/main.cpp)
 target_link_libraries(client asio)
+
+add_subdirectory(tests)
