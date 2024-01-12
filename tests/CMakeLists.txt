@@ -1,3 +1,6 @@
+# disable CTest targets like Nightly, Experimental, etc.
+set_property(GLOBAL PROPERTY CTEST_TARGETS_ADDED 1)
+
 include(CTest)
 
 include(${CMAKE_SOURCE_DIR}/deps/googletest.cmake)
