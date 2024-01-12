@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <string>
 
+namespace {
 class StorageException : public std::runtime_error {
 public:
   explicit StorageException(std::string_view msg, int sqlite_err)
@@ -13,6 +14,33 @@ public:
   explicit StorageException(std::string_view msg, char const * sqlite_err)
       : std::runtime_error(std::string(msg) + std::string(sqlite_err)) {}
 };
+
+// RAII wrapper for sqlite3_stmt with minimalistic interface
+struct SqlQuery {
+  sqlite3_stmt * inner;
+
+  SqlQuery(sqlite3 * db, std::string_view sql) {
+    int rc = sqlite3_prepare_v2(db, sql.data(), sql.size(), &this->inner, nullptr);
+    if (rc != SQLITE_OK) {
+      throw StorageException("Failed to prepare SQL statement: ", rc);
+    }
+  }
+
+  ~SqlQuery() { sqlite3_finalize(this->inner); }
+
+  SqlQuery(SqlQuery const &) = delete;
+  SqlQuery & operator=(SqlQuery const &) = delete;
+  SqlQuery(SqlQuery &&) = delete;
+  SqlQuery & operator=(SqlQuery &&) = delete;
+
+  void bind(int index, std::string_view value) {
+    int rc = sqlite3_bind_text(this->inner, index, value.data(), value.size(), SQLITE_STATIC);
+    if (rc != SQLITE_OK) {
+      throw StorageException("Failed to bind SQL parameters: ", rc);
+    }
+  }
+};
+}  // namespace
 
 Storage::Storage(char const * path) {
   int rc = sqlite3_open(path, &this->db);
@@ -41,40 +69,26 @@ Storage::~Storage() {
 }
 
 UserId Storage::get_or_create_user(std::string_view username) {
-  sqlite3_stmt * stmt;
-  int rc = sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO users (username) VALUES (?);", -1, &stmt, nullptr);
-  if (rc != SQLITE_OK) {
-    throw StorageException("Failed to prepare SQL statement: ", rc);
+  {
+    SqlQuery insert(this->db, "INSERT OR IGNORE INTO users (username) VALUES (?);");
+    insert.bind(1, username);
+
+    int rc = sqlite3_step(insert.inner);
+    if (rc != SQLITE_DONE) {
+      throw StorageException("Failed to execute SQL statement: ", rc);
+    }
   }
 
-  rc = sqlite3_bind_text(stmt, 1, username.data(), username.size(), SQLITE_STATIC);
-  if (rc != SQLITE_OK) {
-    throw StorageException("Failed to bind SQL parameters: ", rc);
+  {
+    SqlQuery select(this->db, "SELECT id FROM users WHERE username = ?;");
+    select.bind(1, username);
+
+    int rc = sqlite3_step(select.inner);
+    if (rc != SQLITE_ROW) {
+      throw StorageException("Failed to execute SQL statement: ", rc);
+    }
+
+    int user_id = sqlite3_column_int(select.inner, 0);
+    return { user_id };
   }
-
-  rc = sqlite3_step(stmt);
-  if (rc != SQLITE_DONE) {
-    throw StorageException("Failed to execute SQL statement: ", rc);
-  }
-  sqlite3_finalize(stmt);
-
-  rc = sqlite3_prepare_v2(db, "SELECT id FROM users WHERE username = ?;", -1, &stmt, nullptr);
-  if (rc != SQLITE_OK) {
-    throw StorageException("Failed to prepare SQL statement: ", rc);
-  }
-
-  rc = sqlite3_bind_text(stmt, 1, username.data(), username.size(), SQLITE_STATIC);
-  if (rc != SQLITE_OK) {
-    throw StorageException("Failed to bind SQL parameters: ", rc);
-  }
-
-  rc = sqlite3_step(stmt);
-  if (rc != SQLITE_ROW) {
-    throw StorageException("Failed to execute SQL statement: ", rc);
-  }
-
-  int user_id = sqlite3_column_int(stmt, 0);
-  sqlite3_finalize(stmt);
-
-  return { user_id };
 }
