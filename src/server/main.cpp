@@ -79,15 +79,19 @@ awaitable<void> process_user_commands(tcp::socket socket, UserConnection connect
 }
 
 awaitable<void> cancel_expired_sell_orders(std::shared_ptr<Storage> storage) {
+  namespace ch = std::chrono;
+  auto timer = asio::steady_timer(co_await asio::this_coro::executor, std::chrono::seconds(1));
+
   for (;;) {
-    co_await asio::steady_timer(co_await asio::this_coro::executor, std::chrono::seconds(1)).async_wait(use_awaitable);
-    namespace ch = std::chrono;
+    co_await timer.async_wait(use_awaitable);
+    timer.expires_at(timer.expiry() + ch::seconds(1));
+
     auto const now = ch::round<ch::seconds>(ch::system_clock::now());
     // format expiration time as "YYYY-MM-DD HH:MM:SS", like "2021-01-01 00:00:00"
     auto const now_str = fmt::format("{:%Y-%m-%d %H:%M:%S}", now);
     auto result = storage->cancel_expired_sell_orders(now_str);
     if (!result) {
-      fmt::println("Failed to cancel expired sell orders: {}", result.error());
+      fmt::println("Failed to cancel expired sell orders at {}: {}", now_str, result.error());
     }
   }
 }
