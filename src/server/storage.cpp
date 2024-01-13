@@ -7,81 +7,48 @@
 #include <stdexcept>
 #include <string>
 
-namespace {
-// RAII wrapper for sqlite3_stmt with minimalistic interface
-struct SqlQuery {
-  sqlite3_stmt * inner;
-
-  SqlQuery(sqlite3 * db, std::string_view sql) {
-    int rc = sqlite3_prepare_v2(db, sql.data(), sql.size(), &this->inner, nullptr);
-    if (rc != SQLITE_OK) {
-      throw std::runtime_error(fmt::format("Failed to prepare SQL statement: {}", sqlite3_errstr(rc)));
-    }
+tl::expected<Storage, std::string> Storage::open(const char * path) {
+  auto db = Sqlite3::open(path);
+  if (!db) {
+    return tl::make_unexpected(fmt::format("Failed to open database: {}", db.error()));
   }
 
-  ~SqlQuery() { sqlite3_finalize(this->inner); }
-
-  SqlQuery(SqlQuery const &) = delete;
-  SqlQuery & operator=(SqlQuery const &) = delete;
-  SqlQuery(SqlQuery &&) = delete;
-  SqlQuery & operator=(SqlQuery &&) = delete;
-
-  void bind(int index, std::string_view value) {
-    int rc = sqlite3_bind_text(this->inner, index, value.data(), value.size(), SQLITE_STATIC);
-    if (rc != SQLITE_OK) {
-      throw std::runtime_error(fmt::format("Failed to bind SQL parameters: {}", sqlite3_errstr(rc)));
-    }
-  }
-};
-}  // namespace
-
-Storage::Storage(char const * path) {
-  int rc = sqlite3_open(path, &this->db);
-  if (rc != SQLITE_OK) {
-    sqlite3_close(db);
-    throw std::runtime_error(fmt::format("Failed to open database: {}", sqlite3_errstr(rc)));
-  }
-
-  // Create table if it doesn't exist
-  const char * sql =
+  auto result = db->execute(
       "CREATE TABLE IF NOT EXISTS users ("
       "id INTEGER PRIMARY KEY,"
       "username TEXT NOT NULL UNIQUE"
-      ");";
-  char * err_msg;
-  rc = sqlite3_exec(db, sql, nullptr, nullptr, &err_msg);
-  if (rc != SQLITE_OK) {
-    sqlite3_free(err_msg);
-    sqlite3_close(db);
-    throw std::runtime_error(fmt::format("Failed to create table: {}", err_msg));
+      ");");
+  if (!result) {
+    return tl::make_unexpected(fmt::format("Failed to create 'users' table: {}", result.error()));
   }
+
+  return Storage(std::move(*db));
 }
 
-Storage::~Storage() {
-  sqlite3_close(this->db);
-}
-
-UserId Storage::get_or_create_user(std::string_view username) {
-  {
-    SqlQuery insert(this->db, "INSERT OR IGNORE INTO users (username) VALUES (?);");
-    insert.bind(1, username);
-
-    int rc = sqlite3_step(insert.inner);
-    if (rc != SQLITE_DONE) {
-      throw std::runtime_error(fmt::format("Failed to execute SQL statement: {}", sqlite3_errstr(rc)));
-    }
+tl::expected<UserId, std::string> Storage::get_or_create_user(std::string_view username) {
+  auto insert = this->db.prepare("INSERT OR IGNORE INTO users (username) VALUES (?1);").and_then([&](auto insert) {
+    return insert.bind(1, username).and_then([&]() -> tl::expected<void, std::string> {
+      int rc = sqlite3_step(insert.inner);
+      if (rc != SQLITE_DONE) {
+        return tl::make_unexpected(fmt::format("Failed to execute SQL statement: {}", sqlite3_errstr(rc)));
+      }
+      return {};
+    });
+  });
+  if (!insert) {
+    return tl::make_unexpected(insert.error());
   }
 
-  {
-    SqlQuery select(this->db, "SELECT id FROM users WHERE username = ?;");
-    select.bind(1, username);
+  auto select = this->db.prepare("SELECT id FROM users WHERE username = ?1;").and_then([&](auto select) {
+    return select.bind(1, username).and_then([&]() -> tl::expected<UserId, std::string> {
+      int rc = sqlite3_step(select.inner);
+      if (rc != SQLITE_ROW) {
+        throw std::runtime_error(fmt::format("Failed to execute SQL statement: {}", sqlite3_errstr(rc)));
+      }
 
-    int rc = sqlite3_step(select.inner);
-    if (rc != SQLITE_ROW) {
-      throw std::runtime_error(fmt::format("Failed to execute SQL statement: {}", sqlite3_errstr(rc)));
-    }
-
-    int user_id = sqlite3_column_int(select.inner, 0);
-    return { user_id };
-  }
+      int user_id = sqlite3_column_int(select.inner, 0);
+      return UserId{ user_id };
+    });
+  });
+  return select;
 }

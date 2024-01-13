@@ -5,7 +5,11 @@ include(CTest)
 
 include(${CMAKE_SOURCE_DIR}/deps/googletest.cmake)
 
-add_executable(test-storage storage_tests.cpp ${CMAKE_SOURCE_DIR}/src/server/storage.cpp)
+add_executable(test-storage
+  storage_tests.cpp
+  ${CMAKE_SOURCE_DIR}/src/server/storage.cpp
+  ${CMAKE_SOURCE_DIR}/src/server/sqlite3.cpp
+)
 target_include_directories(test-storage PRIVATE ${CMAKE_SOURCE_DIR}/src/server/)
-target_link_libraries(test-storage PRIVATE gtest_all sqlite3 fmt::fmt)
+target_link_libraries(test-storage PRIVATE gtest_all sqlite3 fmt::fmt tl::expected)
 add_test(NAME test-storage COMMAND test-storage)

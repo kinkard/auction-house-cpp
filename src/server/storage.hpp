@@ -1,17 +1,21 @@
 #pragma once
 
-#include <string_view>
-
-struct sqlite3;
+#include "sqlite3.hpp"
+#include "tl/expected.hpp"
 
 struct UserId {
   int id;
 };
 
 class Storage final {
+  Sqlite3 db;
+
+  // constructor is private, use `open` instead
+  Storage(Sqlite3 && db) noexcept : db(std::move(db)){};
+
 public:
-  Storage(char const * path);
-  ~Storage();
+  tl::expected<Storage, std::string> static open(char const * path);
+  ~Storage() = default;
 
   // This class cannot be copied, but can be moved
   Storage(Storage const &) = delete;
@@ -20,8 +24,7 @@ public:
   Storage & operator=(Storage &&) = default;
 
   // Returns user id of the already existing or newly created user
-  UserId get_or_create_user(std::string_view username);
+  tl::expected<UserId, std::string> get_or_create_user(std::string_view username);
 
 private:
-  sqlite3 * db;
 };

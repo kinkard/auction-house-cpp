@@ -11,10 +11,16 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include(deps/asio.cmake)
 add_subdirectory(deps/sqlite3)
 add_subdirectory(deps/fmt)
+set(EXPECTED_BUILD_TESTS OFF)
+add_subdirectory(deps/expected)
 
 # Server
-add_executable(server src/server/main.cpp src/server/storage.cpp)
-target_link_libraries(server asio sqlite3 fmt::fmt)
+add_executable(server 
+  src/server/main.cpp
+  src/server/storage.cpp
+  src/server/sqlite3.cpp
+)
+target_link_libraries(server asio sqlite3 fmt::fmt tl::expected)
 
 # Client
 add_executable(client src/client/main.cpp)

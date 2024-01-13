@@ -10,3 +10,6 @@
 	path = deps/fmt
 	url = https://github.com/fmtlib/fmt.git
 	shallow = true
+[submodule "deps/expected"]
+	path = deps/expected
+	url = https://github.com/TartanLlama/expected.git

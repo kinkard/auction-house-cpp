@@ -8,11 +8,13 @@
 #include <asio/write.hpp>
 
 #include <fmt/format.h>
+#include <fmt/ranges.h>
 
 #include <charconv>
 #include <cstring>
 #include <iterator>
 #include <string_view>
+#include <unordered_set>
 
 using asio::awaitable;
 using asio::co_spawn;
@@ -30,26 +32,43 @@ std::pair<std::string_view, std::string_view> parse_command(std::string_view req
 
 awaitable<void> handle_client(tcp::socket socket, std::shared_ptr<Storage> storage) {
   char buffer[256];
+
+  std::unordered_set<std::string_view> const commands = { "ping", "deposit", "withdraw",   "view_items",
+                                                          "sell", "buy",     "view_orders" };
+
   try {
     // first, validate the greating message
     std::size_t n = co_await socket.async_read_some(asio::buffer(buffer), use_awaitable);
-    std::string_view request(buffer, n);
-
-    auto [command, username] = parse_command(request);
+    auto [command, username] = parse_command({ buffer, n });
     if (command != "login") {
       std::string response = "Failed to login. Expected: login <username>\n";
       co_await async_write(socket, asio::buffer(response), use_awaitable);
       co_return;  // it will close the socket as well
     }
 
-    UserId user_id = storage->get_or_create_user(username);
-    std::string response = fmt::format("Successfully logged in as {}", username);
-    co_await async_write(socket, asio::buffer(response), use_awaitable);
-    fmt::println("User {} logged in with id {}", username, user_id.id);
+    auto user_id = storage->get_or_create_user(username);
+    if (!user_id) {
+      std::string response = fmt::format("Failed to login as '{}': {}", username, user_id.error());
+      co_await async_write(socket, asio::buffer(response), use_awaitable);
+      co_return;  // it will close the socket as well
+    }
 
-    // After that, we will echo everything back
+    std::string response =
+        fmt::format("Successfully logged in as {}. Now you can use the following commands: {}", username, commands);
+    co_await async_write(socket, asio::buffer(response), use_awaitable);
+    fmt::println("User {} logged in with id {}", username, user_id->id);
+
+    // Keep reading commands from the socket and executing them
     for (;;) {
       std::size_t n = co_await socket.async_read_some(asio::buffer(buffer), use_awaitable);
+      auto [command, args] = parse_command({ buffer, n });
+      if (commands.find(command) == commands.end()) {
+        std::string response =
+            fmt::format("Failed to execute unknown command '{}'. Available commands are {}", command, commands);
+        co_await async_write(socket, asio::buffer(response), use_awaitable);
+        continue;
+      }
+
       co_await async_write(socket, asio::buffer(buffer, n), use_awaitable);
     }
   } catch (std::exception & e) {
@@ -81,8 +100,13 @@ int main(int argc, char * argv[]) {
     return 1;
   }
 
+  auto storage = Storage::open(argv[2]);
+  if (!storage) {
+    fmt::println("Failed to open database: {}", storage.error());
+    return 1;
+  }
+
   try {
-    auto storage = std::make_shared<Storage>(argv[2]);
     asio::io_context io_context(1);
 
     // Graceful shutdown
@@ -92,7 +116,7 @@ int main(int argc, char * argv[]) {
       io_context.stop();
     });
 
-    co_spawn(io_context, listener(port, std::move(storage)), detached);
+    co_spawn(io_context, listener(port, std::make_shared<Storage>(std::move(*storage))), detached);
 
     io_context.run();
   } catch (std::exception & e) {
