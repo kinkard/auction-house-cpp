@@ -33,7 +33,7 @@ tl::expected<Sqlite3::Statement, std::string> Sqlite3::prepare(std::string_view 
   sqlite3_stmt * stmt;
   int rc = sqlite3_prepare_v2(this->db, sql.data(), sql.size(), &stmt, nullptr);
   if (rc != SQLITE_OK) {
-    return tl::make_unexpected(fmt::format("Failed to prepare SQL statement: {}", sqlite3_errstr(rc)));
+    return tl::make_unexpected(fmt::format("Failed to prepare SQL statement: {}", sqlite3_errmsg(this->db)));
   }
   return Statement(stmt);
 }

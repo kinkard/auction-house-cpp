@@ -26,6 +26,8 @@ SQLite3 is used to store data in file.
 erDiagram
     users ||--|| user_items : "1..*"
     items ||--|| user_items : "1..*"
+    users ||--o{ sell_orders : "places"
+    items ||--o| sell_orders : "sells"
     users {
         int id
         string username
@@ -37,7 +39,15 @@ erDiagram
     user_items {
         int user_id
         int item_id
-        int count
+        int quantity
+    }
+    sell_orders {
+        int id
+        int user_id
+        int item_id
+        int quantity
+        int price
+        datetime expiration_time
     }
 ```
 

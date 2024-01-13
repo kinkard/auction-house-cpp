@@ -9,6 +9,7 @@
 #include <asio/signal_set.hpp>
 #include <asio/write.hpp>
 
+#include <fmt/chrono.h>
 #include <fmt/format.h>
 #include <fmt/ranges.h>
 
@@ -50,7 +51,9 @@ awaitable<void> process_user_commands(tcp::socket socket, UserConnection connect
     { "deposit", commands::deposit },
     { "withdraw", commands::withdraw },
     { "view_items", commands::view_items },
-    // "sell", "buy", "view_orders"
+    { "sell", commands::sell },
+    // "buy",
+    { "view_sell_orders", commands::view_sell_orders },
   };
   auto const commands_str = print_keys(commands);
 
@@ -72,6 +75,20 @@ awaitable<void> process_user_commands(tcp::socket socket, UserConnection connect
   } catch (std::exception & e) {
     fmt::println("Connection with user {}, id={} was closed by client: {}", connection.user.username,
                  connection.user.id, e.what());
+  }
+}
+
+awaitable<void> cancel_expired_sell_orders(std::shared_ptr<Storage> storage) {
+  for (;;) {
+    co_await asio::steady_timer(co_await asio::this_coro::executor, std::chrono::seconds(1)).async_wait(use_awaitable);
+    namespace ch = std::chrono;
+    auto const now = ch::round<ch::seconds>(ch::system_clock::now());
+    // format expiration time as "YYYY-MM-DD HH:MM:SS", like "2021-01-01 00:00:00"
+    auto const now_str = fmt::format("{:%Y-%m-%d %H:%M:%S}", now);
+    auto result = storage->cancel_expired_sell_orders(now_str);
+    if (!result) {
+      fmt::println("Failed to cancel expired sell orders: {}", result.error());
+    }
   }
 }
 
@@ -139,6 +156,8 @@ int main(int argc, char * argv[]) {
   }
 
   try {
+    auto shared_storage = std::make_shared<Storage>(std::move(*storage));
+
     asio::io_context io_context(1);
 
     // Graceful shutdown
@@ -148,7 +167,8 @@ int main(int argc, char * argv[]) {
       io_context.stop();
     });
 
-    co_spawn(io_context, listener(port, std::make_shared<Storage>(std::move(*storage))), detached);
+    co_spawn(io_context, listener(port, shared_storage), detached);
+    co_spawn(io_context, cancel_expired_sell_orders(std::move(shared_storage)), detached);
 
     io_context.run();
   } catch (std::exception & e) {

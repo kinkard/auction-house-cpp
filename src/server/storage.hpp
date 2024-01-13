@@ -10,6 +10,15 @@ struct User {
   std::string username;
 };
 
+struct SellOrder {
+  int id;
+  std::string user_name;
+  std::string item_name;
+  int quantity;
+  int price;
+  std::string expiration_time;
+};
+
 class Storage final {
   Sqlite3 db;
   int funds_item_id;
@@ -31,13 +40,23 @@ public:
   tl::expected<User, std::string> get_or_create_user(std::string_view username);
 
   // Deposint item to the user. "funds" item is used to store the balance
-  tl::expected<void, std::string> deposit(UserId user_id, std::string_view item_name, int count);
+  tl::expected<void, std::string> deposit(UserId user_id, std::string_view item_name, int quantity);
 
   // Withdraws item from the user. "funds" item is used to store the balance
-  tl::expected<void, std::string> withdraw(UserId user_id, std::string_view item_name, int count);
+  tl::expected<void, std::string> withdraw(UserId user_id, std::string_view item_name, int quantity);
 
   // List all user items
   tl::expected<std::vector<std::pair<std::string, int>>, std::string> view_items(UserId user_id);
+
+  // Place a sell order
+  tl::expected<void, std::string> place_sell_order(UserId user_id, std::string_view item_name, int quantity, int price,
+                                                   std::string_view expiration_time);
+
+  // View all sell orders
+  tl::expected<std::vector<SellOrder>, std::string> view_sell_orders();
+
+  // Cancel expired sell orders
+  tl::expected<void, std::string> cancel_expired_sell_orders(std::string_view now);
 
 private:
   bool is_valid_user(UserId user_id);
