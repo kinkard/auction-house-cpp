@@ -7,7 +7,15 @@ This is a code test project for [Senior Online Programmer (New Game IP)](https:/
 ```sh
 mkdir build && cd build
 cmake .. && cmake --build . -j 10
-./server
+./server 3000
+```
+
+## Client
+
+This repo also contains a minimalistic client that sends everything you type in console to the server and prints everything server sends back. The telnet can be used instead.
+
+```sh
+./client localhost:3000
 ```
 
 ## VS2019 note

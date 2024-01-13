@@ -41,7 +41,6 @@ std::optional<std::pair<std::string, std::string>> parse_hostname_port(std::stri
 // - thread safety - this thread is the only one that writes to the socket
 void spawn_cli_handler(tcp::socket & socket) {
   std::thread([&]() {
-    std::cout << "Enter a command:" << std::endl;
     while (true) {
       std::string cmd;
       std::getline(std::cin, cmd);
@@ -54,10 +53,10 @@ void spawn_cli_handler(tcp::socket & socket) {
 awaitable<void> socket_task(tcp::socket & socket) {
   try {
     while (true) {
-      char data[128];
+      char data[256];
       size_t n = co_await socket.async_read_some(asio::buffer(data), use_awaitable);
       std::string_view response(data, n);
-      std::cout << "Received: " << response << std::endl;
+      std::cout << "> " << response << std::endl;
     }
   } catch (std::exception & e) {
     // We do nothing except printing the exception because `socket_task` is the only task in this
@@ -67,9 +66,9 @@ awaitable<void> socket_task(tcp::socket & socket) {
 }
 
 int main(int argc, char * argv[]) {
-  if (argc != 3) {
-    std::cout << "Usage: client <addr:port> <username>" << std::endl;
-    std::cout << "Example: client localhost:3000 john_doe" << std::endl;
+  if (argc != 2) {
+    std::cout << "Usage: client <addr:port>" << std::endl;
+    std::cout << "Example: client localhost:3000" << std::endl;
     return 1;
   }
 
@@ -78,8 +77,6 @@ int main(int argc, char * argv[]) {
     std::cout << "Invalid server address: " << argv[1] << ". Expected format is <addr:port>" << std::endl;
     return 1;
   }
-
-  std::string_view username(argv[2]);
 
   try {
     asio::io_context io_context;
@@ -90,11 +87,6 @@ int main(int argc, char * argv[]) {
 
     tcp::socket socket(io_context);
     asio::connect(socket, endpoint_iterator);
-
-    // Send username to server.
-    std::string message = "Hello, my dear server! My name is ";
-    message += username;
-    asio::write(socket, asio::buffer(message));
 
     spawn_cli_handler(socket);
     co_spawn(io_context, socket_task(socket), detached);
