@@ -81,9 +81,8 @@ int main(int argc, char * argv[]) {
     return 1;
   }
 
-  auto storage = std::make_shared<Storage>(argv[2]);
-
   try {
+    auto storage = std::make_shared<Storage>(argv[2]);
     asio::io_context io_context(1);
 
     // Graceful shutdown
