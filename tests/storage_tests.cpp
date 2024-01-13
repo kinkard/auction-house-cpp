@@ -187,5 +187,8 @@ TEST_F(StorageTest, place_sell_order) {
   // try to sell to from non-existing user
   ASSERT_FALSE(storage->place_sell_order(100, "item1", 10, 10, "2021-01-01 00:00"));
 
+  // cannot sell funds
+  ASSERT_FALSE(storage->place_sell_order(user.id, "funds", 10, 10, "2021-01-01 00:00"));
+
   EXPECT_THAT(*storage->view_sell_orders(), testing::IsEmpty());
 }

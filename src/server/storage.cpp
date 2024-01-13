@@ -7,6 +7,9 @@
 #include <stdexcept>
 #include <string>
 
+// Use magic of the C++ string literal concatenation to make the code more readable
+#define FUNDS_ITEM_NAME "funds"
+
 tl::expected<Storage, std::string> Storage::open(const char * path) {
   auto db = Sqlite3::open(path);
   if (!db) {
@@ -32,12 +35,12 @@ tl::expected<Storage, std::string> Storage::open(const char * path) {
   }
 
   // If there is no item called "funds", create it
-  result = db->execute("INSERT OR IGNORE INTO items (name) VALUES ('funds');");
+  result = db->execute("INSERT OR IGNORE INTO items (name) VALUES ('" FUNDS_ITEM_NAME "');");
   if (!result) {
-    return tl::make_unexpected(fmt::format("Failed to insert 'funds' item: {}", result.error()));
+    return tl::make_unexpected(fmt::format("Failed to insert '" FUNDS_ITEM_NAME "' item: {}", result.error()));
   }
   auto funds_item_id =
-      db->query("SELECT id FROM items WHERE name = 'funds';")
+      db->query("SELECT id FROM items WHERE name = '" FUNDS_ITEM_NAME "';")
           .and_then([&](auto select) -> tl::expected<int, std::string> {
             int rc = sqlite3_step(select.inner);
             if (rc != SQLITE_ROW) {
@@ -46,7 +49,7 @@ tl::expected<Storage, std::string> Storage::open(const char * path) {
             return sqlite3_column_int(select.inner, 0);
           });
   if (!funds_item_id) {
-    return tl::make_unexpected(fmt::format("Failed to get 'funds' item id: {}", funds_item_id.error()));
+    return tl::make_unexpected(fmt::format("Failed to get '" FUNDS_ITEM_NAME "' item id: {}", funds_item_id.error()));
   }
 
   result = db->execute(
@@ -222,11 +225,11 @@ tl::expected<void, std::string> Storage::place_sell_order(UserId user_id, std::s
   if (price < 0) {
     return tl::make_unexpected("Cannot sell for negative price");
   }
+  if (item_name == FUNDS_ITEM_NAME) {
+    return tl::make_unexpected(
+        fmt::format("Cannot sell " FUNDS_ITEM_NAME " for " FUNDS_ITEM_NAME ", it's a speculation!"));
+  }
 
-  // Check if the user has enough items to sell
-  //   "SELECT items.name, user_items.quantity FROM user_items "
-  // "INNER JOIN items ON user_items.item_id = items.id "
-  // "WHERE user_items.user_id = ?1;",
   auto items_quantity =
       db.query(
             "SELECT user_items.quantity FROM user_items "
