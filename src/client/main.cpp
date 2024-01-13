@@ -53,7 +53,7 @@ void spawn_cli_handler(tcp::socket & socket) {
 awaitable<void> socket_task(tcp::socket & socket) {
   try {
     while (true) {
-      char data[256];
+      char data[1024];
       size_t n = co_await socket.async_read_some(asio::buffer(data), use_awaitable);
       std::string_view response(data, n);
       std::cout << "> " << response << std::endl;
