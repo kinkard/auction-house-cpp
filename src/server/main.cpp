@@ -19,26 +19,38 @@ using asio::detached;
 using asio::use_awaitable;
 using asio::ip::tcp;
 
-awaitable<void> handle_client(tcp::socket socket, std::shared_ptr<Storage> storage) {
-  try {
-    // just read whaterver the client sends us and send it back
-    for (;;) {
-      char data[128];
-      std::size_t n = co_await socket.async_read_some(asio::buffer(data), use_awaitable);
-      std::string_view request(data, n);
+std::pair<std::string_view, std::string_view> parse_command(std::string_view request) noexcept {
+  std::size_t const space_pos = request.find(' ');
+  if (space_pos == std::string_view::npos) {
+    return { request, {} };
+  }
+  return { request.substr(0, space_pos), request.substr(space_pos + 1) };
+}
 
-      // if we receive "Hello, my dear server! My name is <username>" we will store it in our storage
-      std::string_view constexpr command = "Hello, my dear server! My name is ";
-      if (request.find(command) == 0) {
-        std::string_view const username = request.substr(command.size());
-        UserId user_id = storage->get_or_create_user(username);
-        // echo user id back
-        std::string response = "Your user id is ";
-        response += std::to_string(user_id.id);
-        co_await async_write(socket, asio::buffer(response), use_awaitable);
-      } else {
-        co_await async_write(socket, asio::buffer(data, n), use_awaitable);
-      }
+awaitable<void> handle_client(tcp::socket socket, std::shared_ptr<Storage> storage) {
+  char buffer[256];
+  try {
+    // first, validate the greating message
+    std::size_t n = co_await socket.async_read_some(asio::buffer(buffer), use_awaitable);
+    std::string_view request(buffer, n);
+
+    auto [command, username] = parse_command(request);
+    if (command != "login") {
+      std::string response = "Failed to login. Expected: login <username>\n";
+      co_await async_write(socket, asio::buffer(response), use_awaitable);
+      co_return;  // it will close the socket as well
+    }
+
+    UserId user_id = storage->get_or_create_user(username);
+    std::string response = "Successfully logged in as ";
+    response += username;
+    co_await async_write(socket, asio::buffer(response), use_awaitable);
+    std::printf("User %.*s logged in with id %d\n", static_cast<int>(username.size()), username.data(), user_id.id);
+
+    // After that, we will echo everything back
+    for (;;) {
+      std::size_t n = co_await socket.async_read_some(asio::buffer(buffer), use_awaitable);
+      co_await async_write(socket, asio::buffer(buffer, n), use_awaitable);
     }
   } catch (std::exception & e) {
     std::printf("echo Exception: %s\n", e.what());
