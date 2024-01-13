@@ -30,9 +30,6 @@ public:
     return *this;
   }
 
-  // Executes SQL query that doesn't return any data
-  tl::expected<void, std::string> execute(std::string_view sql);
-
   struct Statement final {
     sqlite3_stmt * inner;
 
@@ -48,6 +45,9 @@ public:
       std::swap(inner, local.inner);
       return *this;
     }
+
+    // Executes a prepared statement that doesn't return any data, otherwise returns error
+    tl::expected<void, std::string> execute();
 
     // binds all arguments in a single call
     template <typename... Args>
@@ -71,7 +71,24 @@ public:
     tl::expected<void, std::string> bind(int index, int value);
   };
 
-  // Prepares SQL statement and binds all arguments in a single call
+  // Executes SQL query that doesn't return any data
+  tl::expected<void, std::string> execute(std::string_view sql);
+
+  // Executes SQL query with parameters that doesn't return any data
+  template <typename... Args>
+  tl::expected<void, std::string> execute(std::string_view sql, Args &&... args) {
+    auto stmt = prepare(sql);
+    if (!stmt) {
+      return tl::make_unexpected(std::move(stmt.error()));
+    }
+    auto result = stmt->bind_all(std::forward<Args>(args)...);
+    if (!result) {
+      return tl::make_unexpected(std::move(result.error()));
+    }
+    return stmt->execute();
+  }
+
+  // Prepares SQL statement and binds all arguments in a single call. Suitable for queries that return data
   template <typename... Args>
   tl::expected<Statement, std::string> query(std::string_view sql, Args &&... args) {
     auto stmt = prepare(sql);

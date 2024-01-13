@@ -67,15 +67,7 @@ tl::expected<Storage, std::string> Storage::open(const char * path) {
 
 tl::expected<User, std::string> Storage::get_or_create_user(std::string_view username) {
   // We always do INSERT to make sure that the user exists
-  auto inserted =
-      this->db.query("INSERT INTO users (username) VALUES (?1);", username)
-          .and_then([&](auto insert) -> tl::expected<void, std::string> {
-            int rc = sqlite3_step(insert.inner);
-            if (rc != SQLITE_DONE) {
-              return tl::make_unexpected(fmt::format("Failed to execute SQL statement: {}", sqlite3_errstr(rc)));
-            }
-            return {};
-          });
+  auto user_inserted = this->db.execute("INSERT INTO users (username) VALUES (?1);", username);
 
   auto user_id =
       this->db.query("SELECT id FROM users WHERE username = ?1;", username)
@@ -93,20 +85,11 @@ tl::expected<User, std::string> Storage::get_or_create_user(std::string_view use
   }
 
   // If user just created, then it has 0 funds
-  if (inserted) {
-    auto insert_funds =
-        this->db
-            .query("INSERT INTO user_items (user_id, item_id, count) VALUES (?1, ?2, 0);", user_id.value().id,
-                   this->funds_item_id)
-            .and_then([&](auto insert) -> tl::expected<void, std::string> {
-              int rc = sqlite3_step(insert.inner);
-              if (rc != SQLITE_DONE) {
-                return tl::make_unexpected(fmt::format("Failed to execute SQL statement: {}", sqlite3_errstr(rc)));
-              }
-              return {};
-            });
-    if (!insert_funds) {
-      return tl::make_unexpected(insert_funds.error());
+  if (user_inserted) {
+    auto funds_added = this->db.execute("INSERT INTO user_items (user_id, item_id, count) VALUES (?1, ?2, 0);",
+                                        user_id.value().id, this->funds_item_id);
+    if (!funds_added) {
+      return tl::make_unexpected(funds_added.error());
     }
   }
   return user_id;
@@ -122,17 +105,9 @@ tl::expected<void, std::string> Storage::deposit(UserId user_id, std::string_vie
   }
 
   // We do INSERT OR IGNORE to make sure that the item exists
-  auto insert =
-      this->db.query("INSERT OR IGNORE INTO items (name) VALUES (?1);", item_name)
-          .and_then([&](auto insert) -> tl::expected<void, std::string> {
-            int rc = sqlite3_step(insert.inner);
-            if (rc != SQLITE_DONE) {
-              return tl::make_unexpected(fmt::format("Failed to execute SQL statement: {}", sqlite3_errstr(rc)));
-            }
-            return {};
-          });
-  if (!insert) {
-    return tl::make_unexpected(insert.error());
+  auto item_inserted = this->db.execute("INSERT OR IGNORE INTO items (name) VALUES (?1);", item_name);
+  if (!item_inserted) {
+    return tl::make_unexpected(item_inserted.error());
   }
 
   auto item_id =
@@ -148,20 +123,10 @@ tl::expected<void, std::string> Storage::deposit(UserId user_id, std::string_vie
     return tl::make_unexpected(item_id.error());
   }
 
-  auto update =
-      this->db
-          .query(
-              "INSERT INTO user_items (user_id, item_id, count) VALUES (?1, ?2, ?3) "
-              "ON CONFLICT (user_id, item_id) DO UPDATE SET count = count + ?3;",
-              user_id, item_id.value(), count)
-          .and_then([&](auto insert) -> tl::expected<void, std::string> {
-            int rc = sqlite3_step(insert.inner);
-            if (rc != SQLITE_DONE) {
-              return tl::make_unexpected(fmt::format("Failed to execute SQL statement: {}", sqlite3_errstr(rc)));
-            }
-            return {};
-          });
-  return update;
+  return this->db.execute(
+      "INSERT INTO user_items (user_id, item_id, count) VALUES (?1, ?2, ?3) "
+      "ON CONFLICT (user_id, item_id) DO UPDATE SET count = count + ?3;",
+      user_id, item_id.value(), count);
 }
 
 tl::expected<void, std::string> Storage::withdraw(UserId user_id, std::string_view item_name, int count) {
@@ -174,7 +139,7 @@ tl::expected<void, std::string> Storage::withdraw(UserId user_id, std::string_vi
   }
 
   // if item doesn't exist then it cannot be withdrawn
-  auto select =
+  auto select_item_id =
       this->db.query("SELECT id FROM items WHERE name = ?1;", item_name)
           .and_then([&](auto select) -> tl::expected<int, std::string> {
             int rc = sqlite3_step(select.inner);
@@ -183,13 +148,13 @@ tl::expected<void, std::string> Storage::withdraw(UserId user_id, std::string_vi
             }
             return sqlite3_column_int(select.inner, 0);
           });
-  if (!select) {
-    return tl::make_unexpected(select.error());
+  if (!select_item_id) {
+    return tl::make_unexpected(select_item_id.error());
   }
-  int item_id = select.value();
+  int item_id = select_item_id.value();
 
   // if user doesn't have enough items then it cannot be withdrawn
-  auto user_item_count =
+  auto select_user_item_count =
       this->db.query("SELECT count FROM user_items WHERE user_id = ?1 AND item_id = ?2;", user_id, item_id)
           .and_then([&](auto select) -> tl::expected<int, std::string> {
             int rc = sqlite3_step(select.inner);
@@ -198,27 +163,18 @@ tl::expected<void, std::string> Storage::withdraw(UserId user_id, std::string_vi
             }
             return sqlite3_column_int(select.inner, 0);
           });
-  if (!user_item_count) {
-    return tl::make_unexpected(user_item_count.error());
+  if (!select_user_item_count) {
+    return tl::make_unexpected(select_user_item_count.error());
   }
-  if (user_item_count.value() < count) {
-    return tl::make_unexpected(fmt::format("User doesn't have enough items to withdraw: {}", user_item_count.value()));
+  if (select_user_item_count.value() < count) {
+    return tl::make_unexpected(
+        fmt::format("User doesn't have enough items to withdraw: {}", select_user_item_count.value()));
   }
 
-  auto update =
-      this->db
-          .query(
-              "INSERT INTO user_items (user_id, item_id, count) VALUES (?1, ?2, ?3) "
-              "ON CONFLICT (user_id, item_id) DO UPDATE SET count = count - ?3;",
-              user_id, item_id, count)
-          .and_then([&](auto insert) -> tl::expected<void, std::string> {
-            int rc = sqlite3_step(insert.inner);
-            if (rc != SQLITE_DONE) {
-              return tl::make_unexpected(fmt::format("Failed to execute SQL statement: {}", sqlite3_errstr(rc)));
-            }
-            return {};
-          });
-  return update;
+  return this->db.execute(
+      "INSERT INTO user_items (user_id, item_id, count) VALUES (?1, ?2, ?3) "
+      "ON CONFLICT (user_id, item_id) DO UPDATE SET count = count - ?3;",
+      user_id, item_id, count);
 }
 
 tl::expected<std::vector<std::pair<std::string, int>>, std::string> Storage::view_items(UserId user_id) {

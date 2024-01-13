@@ -42,6 +42,14 @@ Sqlite3::Statement::~Statement() {
   sqlite3_finalize(this->inner);
 }
 
+tl::expected<void, std::string> Sqlite3::Statement::execute() {
+  int rc = sqlite3_step(this->inner);
+  if (rc != SQLITE_DONE) {
+    return tl::make_unexpected(fmt::format("Failed to execute SQL statement: {}", sqlite3_errstr(rc)));
+  }
+  return {};
+}
+
 tl::expected<void, std::string> Sqlite3::Statement::bind(int index, std::string_view value) {
   int rc = sqlite3_bind_text(this->inner, index, value.data(), value.size(), SQLITE_STATIC);
   if (rc != SQLITE_OK) {
