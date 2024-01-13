@@ -7,7 +7,7 @@ This is a code test project for [Senior Online Programmer (New Game IP)](https:/
 ```sh
 mkdir build && cd build
 cmake .. && cmake --build . -j 10
-./server 3000
+./server 3000 db.sqlite
 ```
 
 ## Client
@@ -16,6 +16,29 @@ This repo also contains a minimalistic client that sends everything you type in 
 
 ```sh
 ./client localhost:3000
+```
+
+## Storage
+
+SQLite3 is used to store data in file.
+
+```mermaid
+erDiagram
+    users ||--|| user_items : "1..*"
+    items ||--|| user_items : "1..*"
+    users {
+        int id
+        string username
+    }
+    items {
+        int id
+        string name
+    }
+    user_items {
+        int user_id
+        int item_id
+        int count
+    }
 ```
 
 ## VS2019 note

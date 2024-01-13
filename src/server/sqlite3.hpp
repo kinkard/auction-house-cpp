@@ -2,6 +2,7 @@
 
 #include <tl/expected.hpp>
 
+#include <string>
 #include <string_view>
 
 struct sqlite3;
@@ -48,7 +49,43 @@ public:
       return *this;
     }
 
+    // binds all arguments in a single call
+    template <typename... Args>
+    tl::expected<void, std::string> bind_all(Args &&... args) {
+      return bind_all_impl(1, std::forward<Args>(args)...);
+    }
+
+  private:
+    tl::expected<void, std::string> bind_all_impl(int) { return {}; }
+    template <typename T, typename... Args>
+    tl::expected<void, std::string> bind_all_impl(int index, T && value, Args &&... args) {
+      auto result = bind(index, std::forward<T>(value));
+      if (!result) {
+        return result;
+      }
+      return bind_all_impl(index + 1, std::forward<Args>(args)...);
+    }
+
+    // Internal implementation of bind for different types
     tl::expected<void, std::string> bind(int index, std::string_view value);
+    tl::expected<void, std::string> bind(int index, int value);
   };
+
+  // Prepares SQL statement and binds all arguments in a single call
+  template <typename... Args>
+  tl::expected<Statement, std::string> query(std::string_view sql, Args &&... args) {
+    auto stmt = prepare(sql);
+    if (!stmt) {
+      return stmt;
+    }
+    auto result = stmt->bind_all(std::forward<Args>(args)...);
+    if (!result) {
+      return tl::make_unexpected(std::move(result.error()));
+    }
+    return stmt;
+  }
+
+private:
+  // Prepares SQL statement for execution. Use `query` instead
   tl::expected<Statement, std::string> prepare(std::string_view sql);
 };

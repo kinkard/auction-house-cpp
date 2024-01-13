@@ -19,6 +19,7 @@ add_executable(server
   src/server/main.cpp
   src/server/storage.cpp
   src/server/sqlite3.cpp
+  src/server/commands.cpp
 )
 target_link_libraries(server asio sqlite3 fmt::fmt tl::expected)
 
