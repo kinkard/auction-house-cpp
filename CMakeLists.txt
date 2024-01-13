@@ -10,10 +10,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Dependencies
 include(deps/asio.cmake)
 add_subdirectory(deps/sqlite3)
+add_subdirectory(deps/fmt)
 
 # Server
 add_executable(server src/server/main.cpp src/server/storage.cpp)
-target_link_libraries(server asio sqlite3)
+target_link_libraries(server asio sqlite3 fmt::fmt)
 
 # Client
 add_executable(client src/client/main.cpp)

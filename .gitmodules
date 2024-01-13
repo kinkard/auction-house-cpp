@@ -6,3 +6,7 @@
 	path = deps/googletest
 	url = https://github.com/google/googletest
 	shallow = true
+[submodule "deps/fmt"]
+	path = deps/fmt
+	url = https://github.com/fmtlib/fmt.git
+	shallow = true
