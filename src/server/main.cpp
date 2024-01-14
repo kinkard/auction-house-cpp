@@ -87,7 +87,7 @@ awaitable<void> cancel_expired_sell_orders(std::shared_ptr<Storage> storage) {
     timer.expires_at(timer.expiry() + ch::seconds(1));
 
     int64_t const unix_now = std::chrono::seconds(std::time(NULL)).count();
-    auto result = storage->cancel_expired_sell_orders(unix_now);
+    auto result = storage->process_expired_sell_orders(unix_now);
     if (!result) {
       fmt::println("Failed to cancel expired sell orders at {} unix time: {}", unix_now, result.error());
     }

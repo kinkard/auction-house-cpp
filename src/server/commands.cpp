@@ -158,17 +158,38 @@ std::string sell(UserConnection & connection, std::string_view args) {
 }
 
 std::string buy(UserConnection & connection, std::string_view args) {
+  std::optional<int> bid;
+  std::size_t const space_pos = args.find(' ');
+  if (space_pos != std::string_view::npos) {
+    std::string_view const bid_str = args.substr(space_pos + 1);
+    int parsed = 0;
+    auto const [_, ec] = std::from_chars(bid_str.data(), bid_str.data() + bid_str.size(), parsed);
+    if (ec == std::errc()) {
+      bid = parsed;
+      args = args.substr(0, space_pos);
+    }
+  }
+
   int sell_order_id = 1;
   auto const [_, ec] = std::from_chars(args.data(), args.data() + args.size(), sell_order_id);
   if (ec != std::errc()) {
-    return "Failed to buy. Expected: 'buy <sell_order_id>'";
+    return "Failed to buy. Expected: 'buy <sell_order_id> [<bid>]'";
   }
 
-  auto result = connection.storage->buy(connection.user.id, sell_order_id);
-  if (!result) {
-    return fmt::format("Failed to execute #{} sell order with error: {}", sell_order_id, result.error());
+  if (bid) {
+    auto result = connection.storage->place_bid_on_auction_sell_order(connection.user.id, sell_order_id, *bid);
+    if (!result) {
+      return fmt::format("Failed to place a bid on #{} auction sell order with error: {}", sell_order_id,
+                         result.error());
+    }
+    return fmt::format("Successfully placed a bid on #{} auction sell order", sell_order_id);
+  } else {
+    auto result = connection.storage->execute_immediate_sell_order(connection.user.id, sell_order_id);
+    if (!result) {
+      return fmt::format("Failed to execute #{} sell order with error: {}", sell_order_id, result.error());
+    }
+    return fmt::format("Successfully executed #{} sell order", sell_order_id);
   }
-  return fmt::format("Successfully executed #{} sell order", sell_order_id);
 }
 
 std::string view_sell_orders(UserConnection & connection, std::string_view) {

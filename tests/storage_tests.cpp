@@ -220,7 +220,7 @@ TEST_P(GeneralSellOrderTest, auction_house_fee) {
               testing::ElementsAre(std::make_pair("funds", 100 - fee), std::make_pair("item2", 20)));
 
   // cancel expired orders
-  ASSERT_TRUE(storage->cancel_expired_sell_orders(expiration_time));
+  ASSERT_TRUE(storage->process_expired_sell_orders(expiration_time));
 
   // items are returned but fee is not
   EXPECT_THAT(*storage->view_items(user.id),
@@ -357,7 +357,7 @@ TEST_P(GeneralSellOrderTest, positive) {
                                                 }));
 
   // cancel expired orders
-  auto cancel_result = storage->cancel_expired_sell_orders(expiration_time);
+  auto cancel_result = storage->process_expired_sell_orders(expiration_time);
   ASSERT_TRUE(cancel_result) << cancel_result.error();
   EXPECT_THAT(*storage->view_sell_orders(), testing::ElementsAre(SellOrder{
                                                 .id = 11,
@@ -374,7 +374,7 @@ TEST_P(GeneralSellOrderTest, positive) {
       testing::ElementsAre(std::make_pair("funds", 79), std::make_pair("item1", 10), std::make_pair("item2", 15)));
 
   // And finally, cancel the last order
-  ASSERT_TRUE(storage->cancel_expired_sell_orders(expiration_time + 2));
+  ASSERT_TRUE(storage->process_expired_sell_orders(expiration_time + 2));
   EXPECT_THAT(
       *storage->view_items(user.id),
       testing::ElementsAre(std::make_pair("funds", 79), std::make_pair("item1", 10), std::make_pair("item2", 20)));
@@ -384,7 +384,7 @@ TEST_P(GeneralSellOrderTest, positive) {
 INSTANTIATE_TEST_SUITE_P(GeneralSellOrderTest, GeneralSellOrderTest,
                          ::testing::Values(SellOrderType::Immediate, SellOrderType::Auction));
 
-TEST_F(StorageTest, buy_error) {
+TEST_F(StorageTest, execute_immediate_sell_order_error) {
   auto seller = *storage->get_or_create_user("seller");
   ASSERT_TRUE(storage->deposit(seller.id, "funds", 100));
   ASSERT_TRUE(storage->deposit(seller.id, "item1", 10));
@@ -411,33 +411,137 @@ TEST_F(StorageTest, buy_error) {
                                                 }));
 
   // You can't buy your own items
-  ASSERT_FALSE(storage->buy(seller.id, 1));
+  ASSERT_FALSE(storage->execute_immediate_sell_order(seller.id, 1));
 
   auto buyer = *storage->get_or_create_user("buyer");
 
   // try to buy non-existing sell order
-  ASSERT_FALSE(storage->buy(buyer.id, 100));
+  ASSERT_FALSE(storage->execute_immediate_sell_order(buyer.id, 100));
 
   // try to buy from non-existing user
-  ASSERT_FALSE(storage->buy(100, 1));
+  ASSERT_FALSE(storage->execute_immediate_sell_order(100, 1));
 
   // try to buy without enough funds
-  ASSERT_FALSE(storage->buy(buyer.id, 1));
+  ASSERT_FALSE(storage->execute_immediate_sell_order(buyer.id, 1));
 
   // try to buy auction order with not enough funds
-  ASSERT_FALSE(storage->buy(buyer.id, 2));
+  ASSERT_FALSE(storage->execute_immediate_sell_order(buyer.id, 2));
 
   // repeat with funds
   ASSERT_TRUE(storage->deposit(buyer.id, "funds", 100));
 
   // still can't buy auction order
-  ASSERT_FALSE(storage->buy(buyer.id, 2));
+  ASSERT_FALSE(storage->execute_immediate_sell_order(buyer.id, 2));
 
   // while immediate order should be bought
-  ASSERT_TRUE(storage->buy(buyer.id, 1));
+  ASSERT_TRUE(storage->execute_immediate_sell_order(buyer.id, 1));
 }
 
-TEST_F(StorageTest, buy_ok) {
+TEST_F(StorageTest, place_bid_on_auction_sell_order) {
+  auto seller = *storage->get_or_create_user("seller");
+  ASSERT_TRUE(storage->deposit(seller.id, "funds", 100));
+  ASSERT_TRUE(storage->deposit(seller.id, "item1", 10));
+  ASSERT_TRUE(storage->place_sell_order(SellOrderType::Immediate, seller.id, "item1", 7, 10, expiration_time));
+  ASSERT_TRUE(storage->place_sell_order(SellOrderType::Auction, seller.id, "item1", 3, 11, expiration_time));
+  EXPECT_THAT(*storage->view_sell_orders(), testing::ElementsAre(
+                                                SellOrder{
+                                                    .id = 1,
+                                                    .seller_name = "seller",
+                                                    .item_name = "item1",
+                                                    .quantity = 7,
+                                                    .price = 10,
+                                                    .expiration_time = "2021-01-01 00:00:00",
+                                                    .type = SellOrderType::Immediate,
+                                                },
+                                                SellOrder{
+                                                    .id = 2,
+                                                    .seller_name = "seller",
+                                                    .item_name = "item1",
+                                                    .quantity = 3,
+                                                    .price = 11,
+                                                    .expiration_time = "2021-01-01 00:00:00",
+                                                    .type = SellOrderType::Auction,
+                                                }));
+
+  // You can't can't place a bid on your own items
+  ASSERT_FALSE(storage->place_bid_on_auction_sell_order(seller.id, 2, 20));
+
+  auto buyer = *storage->get_or_create_user("buyer");
+
+  // try to can't place a bid on non-existing sell order
+  ASSERT_FALSE(storage->place_bid_on_auction_sell_order(buyer.id, 100, 20));
+
+  // try to can't place a bid from non-existing user
+  ASSERT_FALSE(storage->place_bid_on_auction_sell_order(100, 2, 20));
+
+  // try to can't place a bid without enough funds
+  ASSERT_FALSE(storage->place_bid_on_auction_sell_order(buyer.id, 20, 20));
+
+  // try to can't place a bid on auction order with not enough funds
+  ASSERT_FALSE(storage->place_bid_on_auction_sell_order(buyer.id, 1, 20));
+
+  // repeat with funds
+  ASSERT_TRUE(storage->deposit(buyer.id, "funds", 100));
+
+  // still can't place a bid on immediate order
+  ASSERT_FALSE(storage->place_bid_on_auction_sell_order(buyer.id, 1, 20));
+
+  // while it is possible to place a bid on auction order
+  ASSERT_TRUE(storage->place_bid_on_auction_sell_order(buyer.id, 2, 20));
+  EXPECT_THAT(*storage->view_items(buyer.id), testing::ElementsAre(std::make_pair("funds", 80)));
+
+  // check that bid is placed
+  EXPECT_THAT(*storage->view_sell_orders(), testing::ElementsAre(
+                                                SellOrder{
+                                                    .id = 1,
+                                                    .seller_name = "seller",
+                                                    .item_name = "item1",
+                                                    .quantity = 7,
+                                                    .price = 10,
+                                                    .expiration_time = "2021-01-01 00:00:00",
+                                                    .type = SellOrderType::Immediate,
+                                                },
+                                                SellOrder{
+                                                    .id = 2,
+                                                    .seller_name = "seller",
+                                                    .item_name = "item1",
+                                                    .quantity = 3,
+                                                    .price = 20,  // a bid was made!
+                                                    .expiration_time = "2021-01-01 00:00:00",
+                                                    .type = SellOrderType::Auction,
+                                                }));
+
+  // but you can't repeat a bid
+  ASSERT_FALSE(storage->place_bid_on_auction_sell_order(buyer.id, 2, 20));
+
+  auto another_buyer = *storage->get_or_create_user("another buyer");
+  ASSERT_TRUE(storage->deposit(another_buyer.id, "funds", 100));
+
+  // and you can't lower previous bid
+  ASSERT_FALSE(storage->place_bid_on_auction_sell_order(another_buyer.id, 2, 19));
+
+  // but you can increase it, but not greater than funds allow
+  ASSERT_FALSE(storage->place_bid_on_auction_sell_order(another_buyer.id, 2, 121));
+
+  ASSERT_TRUE(storage->place_bid_on_auction_sell_order(another_buyer.id, 2, 21));
+
+  EXPECT_THAT(*storage->view_items(seller.id), testing::ElementsAre(std::make_pair("funds", 98)));
+  EXPECT_THAT(*storage->view_items(buyer.id), testing::ElementsAre(std::make_pair("funds", 100)));
+  EXPECT_THAT(*storage->view_items(another_buyer.id), testing::ElementsAre(std::make_pair("funds", 79)));
+
+  // and finally process expired orders
+  ASSERT_TRUE(storage->process_expired_sell_orders(expiration_time));
+  // seller receives funds from the buyer and items from the immediate order
+  EXPECT_THAT(*storage->view_items(seller.id),
+              testing::ElementsAre(std::make_pair("funds", 98 + 21), std::make_pair("item1", 7)));
+  // buyer receives nothing, his bid was outbid
+  EXPECT_THAT(*storage->view_items(buyer.id), testing::ElementsAre(std::make_pair("funds", 100)));
+  // another buyer receives items from the auction order
+  EXPECT_THAT(*storage->view_items(another_buyer.id),
+              testing::ElementsAre(std::make_pair("funds", 79), std::make_pair("item1", 3)));
+}
+
+TEST_F(StorageTest, execute_immediate_sell_order_ok) {
   auto seller = *storage->get_or_create_user("user");
   ASSERT_TRUE(storage->deposit(seller.id, "funds", 100));
   ASSERT_TRUE(storage->deposit(seller.id, "item1", 10));
@@ -467,7 +571,7 @@ TEST_F(StorageTest, buy_ok) {
   ASSERT_TRUE(storage->deposit(buyer.id, "funds", 20));
 
   // 1 item1 for 4 funds
-  ASSERT_TRUE(storage->buy(buyer.id, 4));
+  ASSERT_TRUE(storage->execute_immediate_sell_order(buyer.id, 4));
 
   // check items and funds
   EXPECT_THAT(*storage->view_items(buyer.id),

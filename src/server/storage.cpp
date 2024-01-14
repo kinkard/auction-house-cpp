@@ -276,7 +276,7 @@ tl::expected<std::vector<SellOrder>, std::string> Storage::view_sell_orders() {
       });
 }
 
-tl::expected<void, std::string> Storage::cancel_expired_sell_orders(int64_t unix_now) {
+tl::expected<void, std::string> Storage::process_expired_sell_orders(int64_t unix_now) {
   // Start transaction
   auto transaction_guard = db.begin_transaction();
   if (!transaction_guard) {
@@ -287,21 +287,39 @@ tl::expected<void, std::string> Storage::cancel_expired_sell_orders(int64_t unix
   auto update_result = db.execute(
       // Aggregate orders that sells the same item to the same user
       "WITH aggregated_orders AS ("
-      "  SELECT seller_id, item_id, SUM(quantity) as total_quantity "
+      // this select combines items from all orders that are expired to the same user
+      "  SELECT "
+      // for immediate order and auction order without bid we return items to the seller
+      // for auction order with bid we move items to the buyer
+      "    CASE "
+      "      WHEN buyer_id IS NULL OR buyer_id = seller_id THEN seller_id "
+      "      ELSE buyer_id "
+      "    END as user_id, "
+      "    item_id, "
+      "    SUM(quantity) as total_quantity "
       "  FROM sell_orders "
       "  WHERE sell_orders.expiration_time <= ?1 "
-      "  GROUP BY seller_id, item_id "
+      "  GROUP BY user_id, item_id "
+      // and for auction orders with bid we also add funds to the seller
+      "  UNION ALL "
+      "  SELECT "
+      "    seller_id as user_id, "
+      "    ?2 as item_id, "
+      "    SUM(price) as total_quantity "
+      "  FROM sell_orders "
+      "  WHERE sell_orders.expiration_time <= ?1 AND buyer_id IS NOT NULL AND buyer_id != seller_id "
+      "  GROUP BY seller_id "
       ") "
       "INSERT OR REPLACE INTO user_items (user_id, item_id, quantity) "
       // Combine aggregated orders with user_items
       "SELECT "
-      "  aggregated_orders.seller_id, "
+      "  aggregated_orders.user_id, "
       "  aggregated_orders.item_id, "
       "  IFNULL(user_items.quantity, 0) + aggregated_orders.total_quantity "
       "FROM aggregated_orders "
-      "LEFT JOIN user_items ON user_items.user_id = aggregated_orders.seller_id "
+      "LEFT JOIN user_items ON user_items.user_id = aggregated_orders.user_id "
       "  AND user_items.item_id = aggregated_orders.item_id;",
-      unix_now);
+      unix_now, funds_item_id);
   if (!update_result) {
     return tl::make_unexpected(fmt::format("Failed to cancel expired sell orders: {}", update_result.error()));
   }
@@ -315,57 +333,22 @@ tl::expected<void, std::string> Storage::cancel_expired_sell_orders(int64_t unix
   return transaction_guard->commit();
 }
 
-tl::expected<void, std::string> Storage::buy(UserId buyer_id, int sell_order_id) {
+tl::expected<void, std::string> Storage::execute_immediate_sell_order(UserId buyer_id, int sell_order_id) {
   if (!this->is_valid_user(buyer_id)) {
     return tl::make_unexpected(fmt::format("No such user with id={}", buyer_id));
   }
 
-  // as we have two types of orders, we need to check if the order is immediate or auction
-  // - immediate order (seller_id == buyer_id)
-  //   - transfer funds from buyer to seller
-  //   - transfer item from order to buyer
-  //   - delete order
-  // - auction order (seller_id != buyer_id) is not supported for now
-  struct ImmediateSellOrder {
-    int id;
-    int seller_id;
-    int item_id;
-    int quantity;
-    int price;
-  };
-  auto order =
-      this->db
-          .query(
-              "SELECT"
-              "  sell_orders.seller_id,"
-              "  sell_orders.item_id,"
-              "  sell_orders.quantity,"
-              "  sell_orders.price "
-              "FROM sell_orders "
-              "WHERE sell_orders.id = ?1 "
-              // Select only immediate orders
-              "  AND sell_orders.seller_id == sell_orders.buyer_id "
-              // You can't buy your own items
-              "  AND sell_orders.seller_id != ?2;",
-              sell_order_id, buyer_id)
-          .and_then([sell_order_id](auto select) -> tl::expected<ImmediateSellOrder, std::string> {
-            int rc = sqlite3_step(select.inner);
-            if (rc != SQLITE_ROW) {
-              return tl::make_unexpected(fmt::format("Failed to execute SQL statement: {}", sqlite3_errstr(rc)));
-            }
-
-            int const seller_id = sqlite3_column_int(select.inner, 0);
-            int const item_id = sqlite3_column_int(select.inner, 1);
-            int const quantity = sqlite3_column_int(select.inner, 2);
-            int const price = sqlite3_column_int(select.inner, 3);
-
-            return ImmediateSellOrder{
-              .id = sell_order_id, .seller_id = seller_id, .item_id = item_id, .quantity = quantity, .price = price
-            };
-          });
+  auto order = get_sell_order_info(sell_order_id);
   if (!order) {
     return tl::make_unexpected(fmt::format("Immediate sell order #{} doesn't exist", sell_order_id));
   }
+  if (order->type() != SellOrderType::Immediate) {
+    return tl::make_unexpected(fmt::format("Sell order #{} is not an immediate sell order", sell_order_id));
+  }
+  if (buyer_id == order->seller_id) {
+    return tl::make_unexpected(fmt::format("You can't buy your own items"));
+  }
+
   // Now we should transfer funds, items and delete the order
   auto transaction_guard = db.begin_transaction();
   if (!transaction_guard) {
@@ -380,7 +363,52 @@ tl::expected<void, std::string> Storage::buy(UserId buyer_id, int sell_order_id)
       // Third, transfer item to the buyer
       .and_then([&]() { return deposit_inner(buyer_id, order->item_id, order->quantity); })
       // Finally, delete the order
-      .and_then([&]() { return db.execute("DELETE FROM sell_orders WHERE id = ?1;", order->id); })
+      .and_then([&]() { return db.execute("DELETE FROM sell_orders WHERE id = ?1;", sell_order_id); })
+      // And of course, commit the transaction
+      .and_then([&]() { return transaction_guard->commit(); });
+}
+
+tl::expected<void, std::string> Storage::place_bid_on_auction_sell_order(UserId buyer_id, int sell_order_id, int bid) {
+  if (!this->is_valid_user(buyer_id)) {
+    return tl::make_unexpected(fmt::format("No such user with id={}", buyer_id));
+  }
+
+  auto order = get_sell_order_info(sell_order_id);
+  if (!order) {
+    return tl::make_unexpected(fmt::format("Sell order #{} doesn't exist", sell_order_id));
+  }
+  if (order->type() != SellOrderType::Auction) {
+    return tl::make_unexpected(fmt::format("Sell order #{} is not an auction sell order", sell_order_id));
+  }
+  if (buyer_id == order->seller_id) {
+    return tl::make_unexpected("You cannot bid on your own auction orders");
+  }
+  if (bid <= order->price) {
+    return tl::make_unexpected("Bid must be greater than the current price");
+  }
+
+  auto transaction_guard = db.begin_transaction();
+  if (!transaction_guard) {
+    return tl::make_unexpected(fmt::format("Failed to start transaction: {}", transaction_guard.error()));
+  }
+
+  if (order->buyer_id) {
+    // If there is already a bid, then we should return funds to the previous buyer
+    auto return_funds_result = deposit_inner(*order->buyer_id, funds_item_id, order->price);
+    if (!return_funds_result) {
+      return tl::make_unexpected(
+          fmt::format("Failed to return funds to the previous buyer: {}", return_funds_result.error()));
+    }
+  }
+
+  // First, deduce funds from the buyer
+  return withdraw_inner(buyer_id, funds_item_id, bid)
+      .map_error([&](auto &&) { return fmt::format("Not enough funds to buy"); })
+      // Second, update order price and buyer_id
+      .and_then([&]() {
+        return db.execute("UPDATE sell_orders SET price = ?1, buyer_id = ?2 WHERE id = ?3;", bid, buyer_id,
+                          sell_order_id);
+      })
       // And of course, commit the transaction
       .and_then([&]() { return transaction_guard->commit(); });
 }
@@ -441,4 +469,37 @@ tl::expected<void, std::string> Storage::withdraw_inner(UserId user_id, int item
     reduce_result = db.execute("DELETE FROM user_items WHERE user_id = ?1 AND item_id = ?2;", user_id, item_id);
   }
   return reduce_result;
+}
+
+std::optional<Storage::SellOrderInfo> Storage::get_sell_order_info(int sell_order_id) {
+  auto stmt = this->db.query(
+      "SELECT"
+      "  sell_orders.seller_id,"
+      "  sell_orders.item_id,"
+      "  sell_orders.quantity,"
+      "  sell_orders.price,"
+      "  sell_orders.buyer_id "
+      "FROM sell_orders "
+      "WHERE sell_orders.id = ?1;",
+      sell_order_id);
+  if (!stmt) {
+    return std::nullopt;
+  }
+  int rc = sqlite3_step(stmt->inner);
+  if (rc != SQLITE_ROW) {
+    return std::nullopt;
+  }
+
+  std::optional<int> buyer_id;
+  if (sqlite3_column_type(stmt->inner, 4) == SQLITE_INTEGER) {
+    buyer_id = sqlite3_column_int(stmt->inner, 4);
+  }
+
+  return Storage::SellOrderInfo{
+    .seller_id = sqlite3_column_int(stmt->inner, 0),
+    .item_id = sqlite3_column_int(stmt->inner, 1),
+    .quantity = sqlite3_column_int(stmt->inner, 2),
+    .price = sqlite3_column_int(stmt->inner, 3),
+    .buyer_id = buyer_id,
+  };
 }

@@ -81,10 +81,13 @@ public:
   tl::expected<std::vector<SellOrder>, std::string> view_sell_orders();
 
   // Cancel expired sell orders
-  tl::expected<void, std::string> cancel_expired_sell_orders(int64_t unix_now);
+  tl::expected<void, std::string> process_expired_sell_orders(int64_t unix_now);
 
-  // Buy an item. Resolves immediate sell order immediately or places a buy order for an auction
-  tl::expected<void, std::string> buy(UserId buyer_id, int sell_order_id);
+  // Execute a buy order
+  tl::expected<void, std::string> execute_immediate_sell_order(UserId buyer_id, int sell_order_id);
+
+  // Place a bid on an auction sell order. The order will be executed when order expiration time is reached
+  tl::expected<void, std::string> place_bid_on_auction_sell_order(UserId buyer_id, int sell_order_id, int bid);
 
 private:
   bool is_valid_user(UserId user_id);
@@ -93,4 +96,16 @@ private:
 
   tl::expected<void, std::string> deposit_inner(UserId user_id, int item_id, int quantity);
   tl::expected<void, std::string> withdraw_inner(UserId user_id, int item_id, int quantity);
+
+  // Inner struct that represents a sell order
+  struct SellOrderInfo {
+    int seller_id;
+    int item_id;
+    int quantity;
+    int price;
+    std::optional<int> buyer_id;
+
+    SellOrderType type() const { return buyer_id == seller_id ? SellOrderType::Immediate : SellOrderType::Auction; }
+  };
+  std::optional<SellOrderInfo> get_sell_order_info(int sell_order_id);
 };
