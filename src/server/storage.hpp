@@ -49,7 +49,7 @@ class Storage final {
   int funds_item_id;
 
   // constructor is private, use `open` instead
-  Storage(Sqlite3 && db, int funds_item_id) noexcept : db(std::move(db)), funds_item_id(funds_item_id){};
+  Storage(Sqlite3 && db, int funds_item_id) noexcept : db(std::move(db)), funds_item_id(funds_item_id) {}
 
 public:
   tl::expected<Storage, std::string> static open(char const * path);
@@ -81,7 +81,7 @@ public:
   tl::expected<std::vector<SellOrder>, std::string> view_sell_orders();
 
   // Cancel expired sell orders
-  tl::expected<void, std::string> cancel_expired_sell_orders(uint64_t unix_now);
+  tl::expected<void, std::string> cancel_expired_sell_orders(int64_t unix_now);
 
 private:
   bool is_valid_user(UserId user_id);

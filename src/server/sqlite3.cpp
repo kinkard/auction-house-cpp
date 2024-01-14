@@ -31,7 +31,7 @@ tl::expected<void, std::string> Sqlite3::execute(std::string_view sql) {
 
 tl::expected<Sqlite3::Statement, std::string> Sqlite3::prepare(std::string_view sql) {
   sqlite3_stmt * stmt;
-  int rc = sqlite3_prepare_v2(this->db, sql.data(), sql.size(), &stmt, nullptr);
+  int rc = sqlite3_prepare_v2(this->db, sql.data(), static_cast<int>(sql.size()), &stmt, nullptr);
   if (rc != SQLITE_OK) {
     return tl::make_unexpected(fmt::format("Failed to prepare SQL statement: {}", sqlite3_errmsg(this->db)));
   }
@@ -51,7 +51,7 @@ tl::expected<void, std::string> Sqlite3::Statement::execute() {
 }
 
 tl::expected<void, std::string> Sqlite3::Statement::bind(int index, std::string_view value) {
-  int rc = sqlite3_bind_text(this->inner, index, value.data(), value.size(), SQLITE_STATIC);
+  int rc = sqlite3_bind_text(this->inner, index, value.data(), static_cast<int>(value.size()), SQLITE_STATIC);
   if (rc != SQLITE_OK) {
     return tl::make_unexpected(fmt::format("Failed to bind SQL parameters: {}", sqlite3_errstr(rc)));
   }

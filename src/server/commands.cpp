@@ -86,7 +86,7 @@ struct formatter<SellOrder> {
 
 namespace commands {
 
-std::string ping(UserConnection & connection, std::string_view args) {
+std::string ping(UserConnection &, std::string_view) {
   return "pong";
 }
 
@@ -157,7 +157,7 @@ std::string sell(UserConnection & connection, std::string_view args) {
   return fmt::format("Successfully placed {} sell order for {} {}(s)", order_type, quantity, item_name);
 }
 
-std::string view_sell_orders(UserConnection & connection, std::string_view args) {
+std::string view_sell_orders(UserConnection & connection, std::string_view) {
   auto result = connection.storage->view_sell_orders();
   if (!result) {
     return fmt::format("Failed to view sell orders with error: {}", result.error());

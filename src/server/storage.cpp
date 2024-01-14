@@ -307,7 +307,7 @@ tl::expected<std::vector<SellOrder>, std::string> Storage::view_sell_orders() {
       });
 }
 
-tl::expected<void, std::string> Storage::cancel_expired_sell_orders(uint64_t unix_now) {
+tl::expected<void, std::string> Storage::cancel_expired_sell_orders(int64_t unix_now) {
   // Start transaction
   auto transaction_guard = db.begin_transaction();
   if (!transaction_guard) {
