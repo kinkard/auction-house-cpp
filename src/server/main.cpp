@@ -52,7 +52,7 @@ awaitable<void> process_user_commands(tcp::socket socket, UserConnection connect
     { "withdraw", commands::withdraw },
     { "view_items", commands::view_items },
     { "sell", commands::sell },
-    // "buy",
+    { "buy", commands::buy },
     { "view_sell_orders", commands::view_sell_orders },
   };
   auto const commands_str = print_keys(commands);

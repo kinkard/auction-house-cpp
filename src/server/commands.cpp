@@ -157,6 +157,20 @@ std::string sell(UserConnection & connection, std::string_view args) {
   return fmt::format("Successfully placed {} sell order for {} {}(s)", order_type, quantity, item_name);
 }
 
+std::string buy(UserConnection & connection, std::string_view args) {
+  int sell_order_id = 1;
+  auto const [_, ec] = std::from_chars(args.data(), args.data() + args.size(), sell_order_id);
+  if (ec != std::errc()) {
+    return "Failed to buy. Expected: 'buy <sell_order_id>'";
+  }
+
+  auto result = connection.storage->buy(connection.user.id, sell_order_id);
+  if (!result) {
+    return fmt::format("Failed to execute #{} sell order with error: {}", sell_order_id, result.error());
+  }
+  return fmt::format("Successfully executed #{} sell order", sell_order_id);
+}
+
 std::string view_sell_orders(UserConnection & connection, std::string_view) {
   auto result = connection.storage->view_sell_orders();
   if (!result) {

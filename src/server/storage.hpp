@@ -83,8 +83,14 @@ public:
   // Cancel expired sell orders
   tl::expected<void, std::string> cancel_expired_sell_orders(int64_t unix_now);
 
+  // Buy an item. Resolves immediate sell order immediately or places a buy order for an auction
+  tl::expected<void, std::string> buy(UserId buyer_id, int sell_order_id);
+
 private:
   bool is_valid_user(UserId user_id);
-  std::optional<int> get_item_id(std::string_view item_name);
+  tl::expected<int, std::string> get_item_id(std::string_view item_name);
   std::optional<int> get_items_quantity(UserId user_id, int item_id);
+
+  tl::expected<void, std::string> deposit_inner(UserId user_id, int item_id, int quantity);
+  tl::expected<void, std::string> withdraw_inner(UserId user_id, int item_id, int quantity);
 };

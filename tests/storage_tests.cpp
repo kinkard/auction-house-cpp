@@ -345,3 +345,91 @@ TEST_P(GeneralSellOrderTest, positive) {
 
 INSTANTIATE_TEST_SUITE_P(GeneralSellOrderTest, GeneralSellOrderTest,
                          ::testing::Values(SellOrderType::Immediate, SellOrderType::Auction));
+
+TEST_F(StorageTest, buy_error) {
+  auto seller = *storage->get_or_create_user("seller");
+  ASSERT_TRUE(storage->deposit(seller.id, "funds", 100));
+  ASSERT_TRUE(storage->deposit(seller.id, "item1", 10));
+  ASSERT_TRUE(storage->place_sell_order(SellOrderType::Immediate, seller.id, "item1", 7, 10, expiration_time));
+  ASSERT_TRUE(storage->place_sell_order(SellOrderType::Auction, seller.id, "item1", 3, 11, expiration_time));
+  EXPECT_THAT(*storage->view_sell_orders(), testing::ElementsAre(
+                                                SellOrder{
+                                                    .id = 1,
+                                                    .seller_name = "seller",
+                                                    .item_name = "item1",
+                                                    .quantity = 7,
+                                                    .price = 10,
+                                                    .expiration_time = "2021-01-01 00:00:00",
+                                                    .type = SellOrderType::Immediate,
+                                                },
+                                                SellOrder{
+                                                    .id = 2,
+                                                    .seller_name = "seller",
+                                                    .item_name = "item1",
+                                                    .quantity = 3,
+                                                    .price = 11,
+                                                    .expiration_time = "2021-01-01 00:00:00",
+                                                    .type = SellOrderType::Auction,
+                                                }));
+
+  // You can't buy your own items
+  ASSERT_FALSE(storage->buy(seller.id, 1));
+
+  auto buyer = *storage->get_or_create_user("buyer");
+
+  // try to buy non-existing sell order
+  ASSERT_FALSE(storage->buy(buyer.id, 100));
+
+  // try to buy from non-existing user
+  ASSERT_FALSE(storage->buy(100, 1));
+
+  // try to buy without enough funds
+  ASSERT_FALSE(storage->buy(buyer.id, 1));
+
+  // try to buy auction order with not enough funds
+  ASSERT_FALSE(storage->buy(buyer.id, 2));
+
+  // repeat with funds
+  ASSERT_TRUE(storage->deposit(buyer.id, "funds", 100));
+  ASSERT_FALSE(storage->buy(buyer.id, 2));
+
+  // while immediate order should be bought
+  ASSERT_TRUE(storage->buy(buyer.id, 1));
+
+  // check items and funds
+  EXPECT_THAT(*storage->view_items(buyer.id),
+              testing::ElementsAre(std::make_pair("funds", 90), std::make_pair("item1", 7)));
+  EXPECT_THAT(*storage->view_items(seller.id), testing::ElementsAre(std::make_pair("funds", 110)));
+}
+
+TEST_F(StorageTest, buy_ok) {
+  auto seller = *storage->get_or_create_user("user");
+  ASSERT_TRUE(storage->deposit(seller.id, "funds", 100));
+  ASSERT_TRUE(storage->deposit(seller.id, "item1", 10));
+  ASSERT_TRUE(storage->deposit(seller.id, "item2", 20));
+  EXPECT_THAT(
+      *storage->view_items(seller.id),
+      testing::ElementsAre(std::make_pair("funds", 100), std::make_pair("item1", 10), std::make_pair("item2", 20)));
+
+  ASSERT_TRUE(storage->place_sell_order(SellOrderType::Immediate, seller.id, "item1", 2, 2, expiration_time));
+  ASSERT_TRUE(storage->place_sell_order(SellOrderType::Immediate, seller.id, "item1", 3, 3, expiration_time));
+  ASSERT_TRUE(storage->place_sell_order(SellOrderType::Immediate, seller.id, "item1", 4, 4, expiration_time));
+  ASSERT_TRUE(storage->place_sell_order(SellOrderType::Immediate, seller.id, "item1", 1, 4, expiration_time));
+
+  ASSERT_TRUE(storage->place_sell_order(SellOrderType::Immediate, seller.id, "item2", 5, 5, expiration_time));
+  ASSERT_TRUE(storage->place_sell_order(SellOrderType::Immediate, seller.id, "item2", 10, 10, expiration_time));
+  ASSERT_TRUE(storage->place_sell_order(SellOrderType::Immediate, seller.id, "item2", 5, 15, expiration_time));
+
+  EXPECT_THAT(*storage->view_items(seller.id), testing::ElementsAre(std::make_pair("funds", 100)));
+
+  auto buyer = *storage->get_or_create_user("buyer");
+  ASSERT_TRUE(storage->deposit(buyer.id, "funds", 20));
+
+  // 1 item1 for 4 funds
+  ASSERT_TRUE(storage->buy(buyer.id, 4));
+
+  // check items and funds
+  EXPECT_THAT(*storage->view_items(buyer.id),
+              testing::ElementsAre(std::make_pair("funds", 16), std::make_pair("item1", 1)));
+  EXPECT_THAT(*storage->view_items(seller.id), testing::ElementsAre(std::make_pair("funds", 104)));
+}

@@ -140,15 +140,7 @@ tl::expected<void, std::string> Storage::deposit(UserId user_id, std::string_vie
     return tl::make_unexpected(item_inserted.error());
   }
 
-  auto const item_id = get_item_id(item_name);
-  if (!item_id) {
-    return tl::make_unexpected("Failed to deposit item. Item doesn't exists");
-  }
-
-  return this->db.execute(
-      "INSERT INTO user_items (user_id, item_id, quantity) VALUES (?1, ?2, ?3) "
-      "ON CONFLICT (user_id, item_id) DO UPDATE SET quantity = quantity + ?3;",
-      user_id, *item_id, quantity);
+  return get_item_id(item_name).and_then([&](int item_id) { return deposit_inner(user_id, item_id, quantity); });
 }
 
 tl::expected<void, std::string> Storage::withdraw(UserId user_id, std::string_view item_name, int quantity) {
@@ -160,24 +152,11 @@ tl::expected<void, std::string> Storage::withdraw(UserId user_id, std::string_vi
     return tl::make_unexpected(fmt::format("User with id={} doesn't exist", user_id));
   }
 
-  auto const item_id = get_item_id(item_name);
-  if (!item_id) {
-    return tl::make_unexpected("Failed to withdraw item. Item doesn't exists");
-  }
-
-  auto const user_item_quantity = get_items_quantity(user_id, *item_id);
-  if (!user_item_quantity || *user_item_quantity < quantity) {
-    return tl::make_unexpected(fmt::format("Failed to withdraw item. User doesn't have {} {}(s)", quantity, item_name));
-  }
-
-  tl::expected<void, std::string> reduce_result;
-  if (*item_id == funds_item_id || *user_item_quantity > quantity) {
-    reduce_result = db.execute("UPDATE user_items SET quantity = quantity - ?3 WHERE user_id = ?1 AND item_id = ?2;",
-                               user_id, *item_id, quantity);
-  } else {
-    reduce_result = db.execute("DELETE FROM user_items WHERE user_id = ?1 AND item_id = ?2;", user_id, *item_id);
-  }
-  return reduce_result;
+  return get_item_id(item_name)
+      .and_then([&](int item_id) { return withdraw_inner(user_id, item_id, quantity); })
+      .map_error([&](auto &&) {
+        return fmt::format("Failed to withdraw item. User doesn't have {} {}(s)", quantity, item_name);
+      });
 }
 
 tl::expected<std::vector<std::pair<std::string, int>>, std::string> Storage::view_items(UserId user_id) {
@@ -216,33 +195,6 @@ tl::expected<void, std::string> Storage::place_sell_order(SellOrderType order_ty
         fmt::format("Cannot sell " FUNDS_ITEM_NAME " for " FUNDS_ITEM_NAME ", it's a speculation!"));
   }
 
-  auto const item_id = get_item_id(item_name);
-  if (!item_id) {
-    return tl::make_unexpected("Failed to sell item. Item doesn't exists");
-  }
-  auto const seller_item_quantity = get_items_quantity(seller_id, *item_id);
-  if (!seller_item_quantity || *seller_item_quantity < quantity) {
-    return tl::make_unexpected(fmt::format("Failed to sell item. User doesn't have {} {}(s)", quantity, item_name));
-  }
-
-  auto transaction_guard = db.begin_transaction();
-  if (!transaction_guard) {
-    return tl::make_unexpected(fmt::format("Failed to start transaction: {}", transaction_guard.error()));
-  }
-
-  // first, reduce the user's items and remove the whole row if quantity is 0
-  tl::expected<void, std::string> reduce_result;
-  if (*seller_item_quantity > quantity) {
-    reduce_result = db.execute("UPDATE user_items SET quantity = quantity - ?3 WHERE user_id = ?1 AND item_id = ?2;",
-                               seller_id, *item_id, quantity);
-  } else {
-    reduce_result = db.execute("DELETE FROM user_items WHERE user_id = ?1 AND item_id = ?2;", seller_id, *item_id);
-  }
-  if (!reduce_result) {
-    return tl::make_unexpected(fmt::format("Failed to reduce user items: {}", reduce_result.error()));
-  }
-
-  // Second, insert a new sell order.
   // As mentioned earlier, buyer_id is special stores an information about the order type and state.
   // For immediate orders, buyer_id is equal to the seller_id.
   // For auction orders, buyer_id is null untill someone places a bid.
@@ -251,15 +203,24 @@ tl::expected<void, std::string> Storage::place_sell_order(SellOrderType order_ty
     buyer_id = seller_id;
   }
 
-  auto result = db.execute(
-      "INSERT INTO sell_orders (seller_id, item_id, quantity, price, expiration_time, buyer_id)"
-      "VALUES (?1, ?2, ?3, ?4, ?5, ?6);",
-      seller_id, *item_id, quantity, price, unix_expiration_time, buyer_id);
-  if (!result) {
-    return tl::make_unexpected(fmt::format("Failed to place sell order: {}", result.error()));
+  auto transaction_guard = db.begin_transaction();
+  if (!transaction_guard) {
+    return tl::make_unexpected(fmt::format("Failed to start transaction: {}", transaction_guard.error()));
   }
 
-  return transaction_guard->commit();
+  return get_item_id(item_name)
+      // First, reduce item quantity from the seller
+      .and_then(
+          [&](int item_id) { return withdraw_inner(seller_id, item_id, quantity).map([&]() { return item_id; }); })
+      .map_error([&](auto &&) { return fmt::format("Failed to sell {}. User doesn't have enough", item_name); })
+      // Second, insert the order
+      .and_then([&](int item_id) {
+        return db.execute(
+            "INSERT INTO sell_orders (seller_id, item_id, quantity, price, expiration_time, buyer_id)"
+            "VALUES (?1, ?2, ?3, ?4, ?5, ?6);",
+            seller_id, item_id, quantity, price, unix_expiration_time, buyer_id);
+      })
+      .and_then([&]() { return transaction_guard->commit(); });
 }
 
 tl::expected<std::vector<SellOrder>, std::string> Storage::view_sell_orders() {
@@ -346,6 +307,76 @@ tl::expected<void, std::string> Storage::cancel_expired_sell_orders(int64_t unix
   return transaction_guard->commit();
 }
 
+tl::expected<void, std::string> Storage::buy(UserId buyer_id, int sell_order_id) {
+  if (!this->is_valid_user(buyer_id)) {
+    return tl::make_unexpected(fmt::format("User with id={} doesn't exist", buyer_id));
+  }
+
+  // as we have two types of orders, we need to check if the order is immediate or auction
+  // - immediate order (seller_id == buyer_id)
+  //   - transfer funds from buyer to seller
+  //   - transfer item from order to buyer
+  //   - delete order
+  // - auction order (seller_id != buyer_id) is not supported for now
+  struct ImmediateSellOrder {
+    int id;
+    int seller_id;
+    int item_id;
+    int quantity;
+    int price;
+  };
+  auto order =
+      this->db
+          .query(
+              "SELECT"
+              "  sell_orders.seller_id,"
+              "  sell_orders.item_id,"
+              "  sell_orders.quantity,"
+              "  sell_orders.price "
+              "FROM sell_orders "
+              "WHERE sell_orders.id = ?1 "
+              // Select only immediate orders
+              "  AND sell_orders.seller_id == sell_orders.buyer_id "
+              // You can't buy your own items
+              "  AND sell_orders.seller_id != ?2;",
+              sell_order_id, buyer_id)
+          .and_then([sell_order_id](auto select) -> tl::expected<ImmediateSellOrder, std::string> {
+            int rc = sqlite3_step(select.inner);
+            if (rc != SQLITE_ROW) {
+              return tl::make_unexpected(fmt::format("Failed to execute SQL statement: {}", sqlite3_errstr(rc)));
+            }
+
+            int const seller_id = sqlite3_column_int(select.inner, 0);
+            int const item_id = sqlite3_column_int(select.inner, 1);
+            int const quantity = sqlite3_column_int(select.inner, 2);
+            int const price = sqlite3_column_int(select.inner, 3);
+
+            return ImmediateSellOrder{
+              .id = sell_order_id, .seller_id = seller_id, .item_id = item_id, .quantity = quantity, .price = price
+            };
+          });
+  if (!order) {
+    return tl::make_unexpected(fmt::format("Immediate sell order #{} doesn't exist", sell_order_id));
+  }
+  // Now we should transfer funds, items and delete the order
+  auto transaction_guard = db.begin_transaction();
+  if (!transaction_guard) {
+    return tl::make_unexpected(fmt::format("Failed to start transaction: {}", transaction_guard.error()));
+  }
+
+  // First, deduce funds from the buyer
+  return withdraw_inner(buyer_id, funds_item_id, order->price)
+      .map_error([&](auto &&) { return fmt::format("User doesn't have enough funds"); })
+      // Second, add funds to the seller
+      .and_then([&]() { return deposit_inner(order->seller_id, funds_item_id, order->price); })
+      // Third, transfer item to the buyer
+      .and_then([&]() { return deposit_inner(buyer_id, order->item_id, order->quantity); })
+      // Finally, delete the order
+      .and_then([&]() { return db.execute("DELETE FROM sell_orders WHERE id = ?1;", order->id); })
+      // And of course, commit the transaction
+      .and_then([&]() { return transaction_guard->commit(); });
+}
+
 bool Storage::is_valid_user(UserId user_id) {
   return this->db.query("SELECT id FROM users WHERE id = ?1;", user_id)
       .and_then([](auto select) -> tl::expected<void, std::string> {
@@ -358,16 +389,15 @@ bool Storage::is_valid_user(UserId user_id) {
       .has_value();
 }
 
-std::optional<int> Storage::get_item_id(std::string_view item_name) {
-  auto stmt = this->db.query("SELECT id FROM items WHERE name = ?1;", item_name);
-  if (!stmt) {
-    return std::nullopt;
-  }
-  int rc = sqlite3_step(stmt->inner);
-  if (rc != SQLITE_ROW) {
-    return std::nullopt;
-  }
-  return { sqlite3_column_int(stmt->inner, 0) };
+tl::expected<int, std::string> Storage::get_item_id(std::string_view item_name) {
+  return this->db.query("SELECT id FROM items WHERE name = ?1;", item_name)
+      .and_then([&](auto select) -> tl::expected<int, std::string> {
+        int rc = sqlite3_step(select.inner);
+        if (rc != SQLITE_ROW) {
+          return tl::make_unexpected(fmt::format("Failed to execute SQL statement: {}", sqlite3_errstr(rc)));
+        }
+        return sqlite3_column_int(select.inner, 0);
+      });
 }
 
 std::optional<int> Storage::get_items_quantity(UserId user_id, int item_id) {
@@ -380,4 +410,27 @@ std::optional<int> Storage::get_items_quantity(UserId user_id, int item_id) {
     return std::nullopt;
   }
   return { sqlite3_column_int(stmt->inner, 0) };
+}
+
+tl::expected<void, std::string> Storage::deposit_inner(UserId user_id, int item_id, int quantity) {
+  return this->db.execute(
+      "INSERT INTO user_items (user_id, item_id, quantity) VALUES (?1, ?2, ?3) "
+      "ON CONFLICT (user_id, item_id) DO UPDATE SET quantity = quantity + ?3;",
+      user_id, item_id, quantity);
+}
+
+tl::expected<void, std::string> Storage::withdraw_inner(UserId user_id, int item_id, int quantity) {
+  auto const user_item_quantity = get_items_quantity(user_id, item_id);
+  if (!user_item_quantity || *user_item_quantity < quantity) {
+    return tl::make_unexpected(fmt::format("Failed to withdraw {} items.", quantity));
+  }
+
+  tl::expected<void, std::string> reduce_result;
+  if (item_id == funds_item_id || user_item_quantity > quantity) {
+    reduce_result = db.execute("UPDATE user_items SET quantity = quantity - ?3 WHERE user_id = ?1 AND item_id = ?2;",
+                               user_id, item_id, quantity);
+  } else {
+    reduce_result = db.execute("DELETE FROM user_items WHERE user_id = ?1 AND item_id = ?2;", user_id, item_id);
+  }
+  return reduce_result;
 }
