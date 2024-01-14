@@ -9,14 +9,11 @@
 #include <asio/signal_set.hpp>
 #include <asio/write.hpp>
 
-#include <fmt/chrono.h>
 #include <fmt/format.h>
-#include <fmt/ranges.h>
 
 #include <charconv>
 #include <cstring>
 #include <string_view>
-#include <unordered_map>
 
 using asio::awaitable;
 using asio::co_spawn;
@@ -24,53 +21,12 @@ using asio::detached;
 using asio::use_awaitable;
 using asio::ip::tcp;
 
-std::pair<std::string_view, std::string_view> parse_command(std::string_view request) noexcept {
-  std::size_t const space_pos = request.find(' ');
-  if (space_pos == std::string_view::npos) {
-    return { request, {} };
-  }
-  return { request.substr(0, space_pos), request.substr(space_pos + 1) };
-}
-
-template <typename ValueT>
-std::string print_keys(std::unordered_map<std::string_view, ValueT> const & commands) {
-  std::string result;
-  for (auto const & [command_name, _] : commands) {
-    result += command_name;
-    result += '|';
-  }
-  result.pop_back();  // remove the last '|'
-  return result;
-}
-
 awaitable<void> process_user_commands(tcp::socket socket, UserConnection connection) {
   char buffer[256];
-
-  std::unordered_map<std::string_view, commands::Type> const commands = {
-    { "ping", commands::ping },
-    { "whoami", commands::whoami },
-    { "deposit", commands::deposit },
-    { "withdraw", commands::withdraw },
-    { "view_items", commands::view_items },
-    { "sell", commands::sell },
-    { "buy", commands::buy },
-    { "view_sell_orders", commands::view_sell_orders },
-  };
-  auto const commands_str = print_keys(commands);
-
   try {
     for (;;) {
       std::size_t n = co_await socket.async_read_some(asio::buffer(buffer), use_awaitable);
-      auto [command, args] = parse_command({ buffer, n });
-      auto const it = commands.find(command);
-      if (it == commands.end()) {
-        std::string response =
-            fmt::format("Failed to execute unknown command '{}'. Available commands are {}", command, commands_str);
-        co_await async_write(socket, asio::buffer(response), use_awaitable);
-        continue;
-      }
-
-      auto response = it->second(connection, args);
+      auto response = process_request(connection, { buffer, n });
       co_await async_write(socket, asio::buffer(response), use_awaitable);
     }
   } catch (std::exception & e) {
@@ -79,7 +35,7 @@ awaitable<void> process_user_commands(tcp::socket socket, UserConnection connect
   }
 }
 
-awaitable<void> cancel_expired_sell_orders(std::shared_ptr<Storage> storage) {
+awaitable<void> process_expired_sell_orders(std::shared_ptr<Storage> storage) {
   namespace ch = std::chrono;
   auto timer = asio::steady_timer(co_await asio::this_coro::executor, std::chrono::seconds(1));
 
@@ -97,26 +53,23 @@ awaitable<void> cancel_expired_sell_orders(std::shared_ptr<Storage> storage) {
 
 awaitable<void> process_client_login(tcp::socket socket, std::shared_ptr<Storage> storage) {
   try {
+    std::string_view const greeting = "Welcome to Sundris Auction House, stranger! How can I call you?";
+    co_await async_write(socket, asio::buffer(greeting), use_awaitable);
+
     char buffer[256];
-    // first, validate the greating message
     std::size_t n = co_await socket.async_read_some(asio::buffer(buffer), use_awaitable);
-    auto [command, username] = parse_command({ buffer, n });
-    if (command != "login") {
-      std::string response = "Failed to login. Expected: login <username>\n";
-      co_await async_write(socket, asio::buffer(response), use_awaitable);
-      co_return;  // it will close the socket as well
-    }
+    std::string_view const username = { buffer, n };
 
-    auto user = storage->get_or_create_user(username);
+    auto user = storage->get_or_create_user(username).map_error(
+        [&](auto && err) { return fmt::format("Failed to login as '{}': {}", username, err); });
     if (!user) {
-      std::string response = fmt::format("Failed to login as '{}': {}", username, user.error());
-      co_await async_write(socket, asio::buffer(response), use_awaitable);
+      co_await async_write(socket, asio::buffer(user.error()), use_awaitable);
       co_return;  // it will close the socket as well
     }
 
-    std::string response = fmt::format("Successfully logged in as {}", username);
+    std::string response = fmt::format("Successfully logged in as {}", user->username);
     co_await async_write(socket, asio::buffer(response), use_awaitable);
-    fmt::println("User {}, id={} successfully logged in", username, user->id);
+    fmt::println("User {}, id={} successfully logged in", user->username, user->id);
 
     // Spawn a new coroutine to handle the user
     co_spawn(co_await asio::this_coro::executor,
@@ -171,7 +124,7 @@ int main(int argc, char * argv[]) {
     });
 
     co_spawn(io_context, listener(port, shared_storage), detached);
-    co_spawn(io_context, cancel_expired_sell_orders(std::move(shared_storage)), detached);
+    co_spawn(io_context, process_expired_sell_orders(std::move(shared_storage)), detached);
 
     io_context.run();
   } catch (std::exception & e) {

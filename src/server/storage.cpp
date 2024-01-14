@@ -96,6 +96,10 @@ tl::expected<Storage, std::string> Storage::open(const char * path) {
 }
 
 tl::expected<User, std::string> Storage::get_or_create_user(std::string_view username) {
+  if (username.empty()) {
+    return tl::make_unexpected("Username cannot be empty");
+  }
+
   // We always do INSERT to make sure that the user exists
   auto user_inserted = this->db.execute("INSERT INTO users (username) VALUES (?1);", username);
 
@@ -104,7 +108,7 @@ tl::expected<User, std::string> Storage::get_or_create_user(std::string_view use
           .and_then([&](auto select) -> tl::expected<User, std::string> {
             int rc = sqlite3_step(select.inner);
             if (rc != SQLITE_ROW) {
-              throw std::runtime_error(fmt::format("Failed to execute SQL statement: {}", sqlite3_errstr(rc)));
+              return tl::make_unexpected(fmt::format("Failed to execute SQL statement: {}", sqlite3_errstr(rc)));
             }
 
             int user_id = sqlite3_column_int(select.inner, 0);

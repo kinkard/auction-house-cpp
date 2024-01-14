@@ -10,6 +10,38 @@
 #include <string>
 
 namespace {
+struct UserCommand {
+  // Stores a pointer to a function that takes UserConnection and args and returns a string
+  std::string (*invoke)(UserConnection &, std::string_view);
+
+  std::string_view description;
+};
+
+static std::unordered_map<std::string_view, UserCommand> const kAllCommands = {
+  { "ping", { commands::ping, { "Replies 'pong'" } } },
+  { "whoami", { commands::whoami, { "Displays the username of the current user" } } },
+  { "help", { commands::help, { "Prints this help message about all available commands" } } },
+
+  { "deposit",
+    { commands::deposit,
+      { "Deposits a specified amount into the user's account. Format: 'deposit <item name> [<quantity>]'" } } },
+  { "withdraw",
+    { commands::withdraw,
+      { "Withdraws a specified amount from the user's account. Format: 'withdraw <item name> [<quantity>]'" } } },
+  { "view_items", { commands::view_items, { "Displays a list items for the current user" } } },
+
+  { "sell",
+    { commands::sell,
+      { "Places an item for sale at a specified price. Format: 'sell [immediate|auction] <item_name> [<quantity>] "
+        "<price>'" } } },
+  { "buy",
+    { commands::buy,
+      { "Executes immediate sell order or places a bid on a auction sell order. Format: 'buy <sell_order_id> "
+        "[<bid>]'" } } },
+  { "view_sell_orders",
+    { commands::view_sell_orders, { "Displays a list of all current sell orders from all users" } } },
+};
+
 // Parses the last word as a quantity and if failed - uses the whole string as an item name
 // Examples:
 // - "arrow 5" -> {"arrow", 5}
@@ -45,6 +77,25 @@ std::optional<std::tuple<std::string_view, int, int>> parse_sell_order(std::stri
 
   auto const [item_name, quantity] = parse_item_name_and_count(args);
   return { { item_name, quantity, price } };
+}
+
+std::pair<std::string_view, std::string_view> parse_command(std::string_view request) noexcept {
+  std::size_t const space_pos = request.find(' ');
+  if (space_pos == std::string_view::npos) {
+    return { request, {} };
+  }
+  return { request.substr(0, space_pos), request.substr(space_pos + 1) };
+}
+
+template <typename ValueT>
+std::string print_keys(std::unordered_map<std::string_view, ValueT> const & commands) {
+  std::string result;
+  for (auto const & [command_name, _] : commands) {
+    result += command_name;
+    result += '|';
+  }
+  result.pop_back();  // remove the last '|'
+  return result;
 }
 }  // namespace
 
@@ -92,6 +143,15 @@ std::string ping(UserConnection &, std::string_view) {
 
 std::string whoami(UserConnection & connection, std::string_view) {
   return fmt::format("{}", connection.user.username);
+}
+
+std::string help(UserConnection &, std::string_view) {
+  std::string output = "Available commands:\n";
+  for (auto const & [command_name, command] : kAllCommands) {
+    output += fmt::format("- {} - {}\n", command_name, command.description);
+  }
+  output += fmt::format("Usage: <command> [<args>], where `[]` annotates optional argumet(s)\n");
+  return output;
 }
 
 std::string deposit(UserConnection & connection, std::string_view args) {
@@ -208,3 +268,12 @@ std::string view_sell_orders(UserConnection & connection, std::string_view) {
   return output;
 }
 }  // namespace commands
+
+std::string process_request(UserConnection & connection, std::string_view request) {
+  auto [command, args] = parse_command(request);
+  if (auto const it = kAllCommands.find(command); it != kAllCommands.end()) {
+    return it->second.invoke(connection, args);
+  }
+  auto help_str = commands::help(connection, {});
+  return fmt::format("Failed to execute unknown command '{}'. {}", command, help_str);
+}
