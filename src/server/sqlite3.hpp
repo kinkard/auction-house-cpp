@@ -2,6 +2,7 @@
 
 #include <tl/expected.hpp>
 
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -69,6 +70,16 @@ public:
     // Internal implementation of bind for different types
     tl::expected<void, std::string> bind(int index, std::string_view value);
     tl::expected<void, std::string> bind(int index, int value);
+    tl::expected<void, std::string> bind(int index, std::nullopt_t);
+
+    template <typename T>
+    tl::expected<void, std::string> bind(int index, const std::optional<T> & value) {
+      if (value.has_value()) {
+        return bind(index, *value);
+      } else {
+        return bind(index, std::nullopt);
+      }
+    }
   };
 
   // Executes SQL query that doesn't return any data

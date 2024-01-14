@@ -10,13 +10,38 @@ struct User {
   std::string username;
 };
 
+enum class SellOrderType : int {
+  // Order will be immediately executed if there is a matching buy order
+  Immediate = 1,
+  // Order will be executed only after the auction is over
+  Auction = 2,
+};
+
+inline std::string_view to_string(SellOrderType order_type) {
+  switch (order_type) {
+  case SellOrderType::Immediate: return "immediate";
+  case SellOrderType::Auction: return "auction";
+  }
+  return "unknown";
+}
+
+inline std::optional<SellOrderType> parse_SellOrderType(std::string_view str) {
+  if (str == "immediate") {
+    return SellOrderType::Immediate;
+  } else if (str == "auction") {
+    return SellOrderType::Auction;
+  }
+  return std::nullopt;
+}
+
 struct SellOrder {
   int id;
-  std::string user_name;
+  std::string seller_name;
   std::string item_name;
   int quantity;
   int price;
   std::string expiration_time;
+  SellOrderType type;
 };
 
 class Storage final {
@@ -49,8 +74,8 @@ public:
   tl::expected<std::vector<std::pair<std::string, int>>, std::string> view_items(UserId user_id);
 
   // Place a sell order
-  tl::expected<void, std::string> place_sell_order(UserId user_id, std::string_view item_name, int quantity, int price,
-                                                   std::string_view expiration_time);
+  tl::expected<void, std::string> place_sell_order(SellOrderType order_type, UserId user_id, std::string_view item_name,
+                                                   int quantity, int price, std::string_view expiration_time);
 
   // View all sell orders
   tl::expected<std::vector<SellOrder>, std::string> view_sell_orders();
@@ -60,4 +85,6 @@ public:
 
 private:
   bool is_valid_user(UserId user_id);
+
+  std::optional<int> get_item_id(std::string_view item_name);
 };

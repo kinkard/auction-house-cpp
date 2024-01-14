@@ -65,3 +65,11 @@ tl::expected<void, std::string> Sqlite3::Statement::bind(int index, int value) {
   }
   return {};
 }
+
+tl::expected<void, std::string> Sqlite3::Statement::bind(int index, std::nullopt_t) {
+  int rc = sqlite3_bind_null(this->inner, index);
+  if (rc != SQLITE_OK) {
+    return tl::make_unexpected(fmt::format("Failed to bind SQL parameters: {}", sqlite3_errstr(rc)));
+  }
+  return {};
+}

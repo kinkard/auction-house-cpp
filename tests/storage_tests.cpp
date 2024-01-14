@@ -1,10 +1,12 @@
 #include "gmock/gmock.h"
 #include "storage.hpp"
 
+#include <fmt/format.h>
 #include <gmock/gmock-matchers.h>
 #include <gtest/gtest.h>
 
 #include <memory>
+#include <ostream>
 
 class StorageTest : public ::testing::Test {
 protected:
@@ -132,63 +134,182 @@ TEST_F(StorageTest, items) {
 }
 
 bool operator==(const SellOrder & lhs, const SellOrder & rhs) {
-  return lhs.id == rhs.id && lhs.user_name == rhs.user_name && lhs.item_name == rhs.item_name &&
-         lhs.quantity == rhs.quantity && lhs.price == rhs.price && lhs.expiration_time == rhs.expiration_time;
+  return lhs.id == rhs.id && lhs.seller_name == rhs.seller_name && lhs.item_name == rhs.item_name &&
+         lhs.quantity == rhs.quantity && lhs.price == rhs.price && lhs.expiration_time == rhs.expiration_time &&
+         lhs.type == rhs.type;
 }
 
-TEST_F(StorageTest, place_sell_order) {
+std::ostream & operator<<(std::ostream & os, const SellOrder & order) {
+  return os << fmt::format(
+             "SellOrder{{.id={}, .user_name={}, .item_name={}, .quantity={}, .price={}, "
+             ".expiration_time={}, .type={}}}",
+             order.id, order.seller_name, order.item_name, order.quantity, order.price, order.expiration_time,
+             to_string(order.type));
+}
+
+class GeneralSellOrderTest : public StorageTest, public ::testing::WithParamInterface<SellOrderType> {};
+
+TEST_P(GeneralSellOrderTest, negative) {
+  auto const order_type = GetParam();
+
   auto user = *storage->get_or_create_user("user");
+  ASSERT_TRUE(storage->deposit(user.id, "funds", 100));
   ASSERT_TRUE(storage->deposit(user.id, "item1", 10));
   ASSERT_TRUE(storage->deposit(user.id, "item2", 20));
   EXPECT_THAT(
       *storage->view_items(user.id),
-      testing::ElementsAre(std::make_pair("funds", 0), std::make_pair("item1", 10), std::make_pair("item2", 20)));
+      testing::ElementsAre(std::make_pair("funds", 100), std::make_pair("item1", 10), std::make_pair("item2", 20)));
+  EXPECT_THAT(*storage->view_sell_orders(), testing::IsEmpty());
 
-  ASSERT_TRUE(storage->place_sell_order(user.id, "item1", 5, 10, "2021-01-01 00:00:00"));
+  // try to sell more than we have
+  ASSERT_FALSE(storage->place_sell_order(order_type, user.id, "item1", 110, 10, "2021-01-01 00:00"));
+
+  // try to sell negative amount
+  ASSERT_FALSE(storage->place_sell_order(order_type, user.id, "item1", -10, 10, "2021-01-01 00:00"));
+
+  // try to sell for negative price
+  ASSERT_FALSE(storage->place_sell_order(order_type, user.id, "item1", 10, -10, "2021-01-01 00:00"));
+
+  // try to sell non-existing item
+  ASSERT_FALSE(storage->place_sell_order(order_type, user.id, "non existing item", 10, 10, "2021-01-01 00:00"));
+
+  // try to sell to from non-existing user
+  ASSERT_FALSE(storage->place_sell_order(order_type, 100, "item1", 10, 10, "2021-01-01 00:00"));
+
+  // cannot sell funds
+  ASSERT_FALSE(storage->place_sell_order(order_type, user.id, "funds", 10, 10, "2021-01-01 00:00"));
+
+  // Finally, nothing should be changed
+  EXPECT_THAT(*storage->view_sell_orders(), testing::IsEmpty());
+}
+
+TEST_P(GeneralSellOrderTest, positive) {
+  auto const order_type = GetParam();
+
+  auto user = *storage->get_or_create_user("user");
+  ASSERT_TRUE(storage->deposit(user.id, "funds", 100));
+  ASSERT_TRUE(storage->deposit(user.id, "item1", 10));
+  ASSERT_TRUE(storage->deposit(user.id, "item2", 20));
   EXPECT_THAT(
       *storage->view_items(user.id),
-      testing::ElementsAre(std::make_pair("funds", 0), std::make_pair("item1", 5), std::make_pair("item2", 20)));
+      testing::ElementsAre(std::make_pair("funds", 100), std::make_pair("item1", 10), std::make_pair("item2", 20)));
 
-  ASSERT_TRUE(storage->place_sell_order(user.id, "item2", 10, 20, "2021-01-01 00:00:00"));
-  EXPECT_THAT(
-      *storage->view_items(user.id),
-      testing::ElementsAre(std::make_pair("funds", 0), std::make_pair("item1", 5), std::make_pair("item2", 10)));
+  for (int i = 1; i < 10; ++i) {
+    ASSERT_TRUE(storage->place_sell_order(order_type, user.id, "item1", 1, 10 + i, "2021-01-01 00:00:00"));
+    EXPECT_THAT(*storage->view_items(user.id),
+                testing::ElementsAre(std::make_pair("funds", 100), std::make_pair("item1", 10 - i),
+                                     std::make_pair("item2", 20)));
+  }
+
+  ASSERT_TRUE(storage->place_sell_order(order_type, user.id, "item2", 20, 100, "2021-01-01 00:00:00"));
+  EXPECT_THAT(*storage->view_items(user.id),
+              testing::ElementsAre(std::make_pair("funds", 100), std::make_pair("item1", 1)));
 
   auto result = storage->view_sell_orders();
   ASSERT_TRUE(result) << result.error();
-  EXPECT_THAT(result.value(), testing::ElementsAre(SellOrder{ 1, "user", "item1", 5, 10, "2021-01-01 00:00:00" },
-                                                   SellOrder{ 2, "user", "item2", 10, 20, "2021-01-01 00:00:00" }));
+  EXPECT_THAT(result.value(), testing::ElementsAre(
+                                  SellOrder{
+                                      .id = 1,
+                                      .seller_name = "user",
+                                      .item_name = "item1",
+                                      .quantity = 1,
+                                      .price = 11,
+                                      .expiration_time = "2021-01-01 00:00:00",
+                                      .type = order_type,
+                                  },
+                                  SellOrder{
+                                      .id = 2,
+                                      .seller_name = "user",
+                                      .item_name = "item1",
+                                      .quantity = 1,
+                                      .price = 12,
+                                      .expiration_time = "2021-01-01 00:00:00",
+                                      .type = order_type,
+                                  },
+                                  SellOrder{
+                                      .id = 3,
+                                      .seller_name = "user",
+                                      .item_name = "item1",
+                                      .quantity = 1,
+                                      .price = 13,
+                                      .expiration_time = "2021-01-01 00:00:00",
+                                      .type = order_type,
+                                  },
+                                  SellOrder{
+                                      .id = 4,
+                                      .seller_name = "user",
+                                      .item_name = "item1",
+                                      .quantity = 1,
+                                      .price = 14,
+                                      .expiration_time = "2021-01-01 00:00:00",
+                                      .type = order_type,
+                                  },
+                                  SellOrder{
+                                      .id = 5,
+                                      .seller_name = "user",
+                                      .item_name = "item1",
+                                      .quantity = 1,
+                                      .price = 15,
+                                      .expiration_time = "2021-01-01 00:00:00",
+                                      .type = order_type,
+                                  },
+                                  SellOrder{
+                                      .id = 6,
+                                      .seller_name = "user",
+                                      .item_name = "item1",
+                                      .quantity = 1,
+                                      .price = 16,
+                                      .expiration_time = "2021-01-01 00:00:00",
+                                      .type = order_type,
+                                  },
+                                  SellOrder{
+                                      .id = 7,
+                                      .seller_name = "user",
+                                      .item_name = "item1",
+                                      .quantity = 1,
+                                      .price = 17,
+                                      .expiration_time = "2021-01-01 00:00:00",
+                                      .type = order_type,
+                                  },
+                                  SellOrder{
+                                      .id = 8,
+                                      .seller_name = "user",
+                                      .item_name = "item1",
+                                      .quantity = 1,
+                                      .price = 18,
+                                      .expiration_time = "2021-01-01 00:00:00",
+                                      .type = order_type,
+                                  },
+                                  SellOrder{
+                                      .id = 9,
+                                      .seller_name = "user",
+                                      .item_name = "item1",
+                                      .quantity = 1,
+                                      .price = 19,
+                                      .expiration_time = "2021-01-01 00:00:00",
+                                      .type = order_type,
+                                  },
+                                  SellOrder{
+                                      .id = 10,
+                                      .seller_name = "user",
+                                      .item_name = "item2",
+                                      .quantity = 20,
+                                      .price = 100,
+                                      .expiration_time = "2021-01-01 00:00:00",
+                                      .type = order_type,
+                                  }));
 
   // cancel expired orders
   auto cancel_result = storage->cancel_expired_sell_orders("2021-01-01 00:00:00");
   ASSERT_TRUE(cancel_result) << cancel_result.error();
-  EXPECT_THAT(*storage->view_sell_orders(), testing::IsEmpty());
+
   // check that items are returned back
   EXPECT_THAT(
       *storage->view_items(user.id),
-      testing::ElementsAre(std::make_pair("funds", 0), std::make_pair("item1", 10), std::make_pair("item2", 20)));
-
-  // check 5 min expiration
-  // ASSERT_TRUE(storage->place_sell_order(user.id, "item1", 5, 10, "2021-01-01 00:00:00"));
-  // ASSERT_TRUE(storage->place_sell_order(user.id, "item2", 10, 20, "2021-01-01 00:00:00"));
-
-  // try to sell more than we have
-  ASSERT_FALSE(storage->place_sell_order(user.id, "item1", 110, 10, "2021-01-01 00:00"));
-
-  // try to sell negative amount
-  ASSERT_FALSE(storage->place_sell_order(user.id, "item1", -10, 10, "2021-01-01 00:00"));
-
-  // try to sell for negative price
-  ASSERT_FALSE(storage->place_sell_order(user.id, "item1", 10, -10, "2021-01-01 00:00"));
-
-  // try to sell non-existing item
-  ASSERT_FALSE(storage->place_sell_order(user.id, "non existing item", 10, 10, "2021-01-01 00:00"));
-
-  // try to sell to from non-existing user
-  ASSERT_FALSE(storage->place_sell_order(100, "item1", 10, 10, "2021-01-01 00:00"));
-
-  // cannot sell funds
-  ASSERT_FALSE(storage->place_sell_order(user.id, "funds", 10, 10, "2021-01-01 00:00"));
+      testing::ElementsAre(std::make_pair("funds", 100), std::make_pair("item1", 10), std::make_pair("item2", 20)));
 
   EXPECT_THAT(*storage->view_sell_orders(), testing::IsEmpty());
 }
+
+INSTANTIATE_TEST_SUITE_P(GeneralSellOrderTest, GeneralSellOrderTest,
+                         ::testing::Values(SellOrderType::Immediate, SellOrderType::Auction));

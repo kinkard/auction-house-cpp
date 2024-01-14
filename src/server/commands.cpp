@@ -50,6 +50,19 @@ std::optional<std::tuple<std::string_view, int, int>> parse_sell_order(std::stri
 
 namespace fmt {
 template <>
+struct formatter<SellOrderType> {
+  template <typename ParseContext>
+  constexpr auto parse(ParseContext & ctx) {
+    return ctx.begin();
+  }
+
+  template <typename FormatContext>
+  auto format(const SellOrderType & order_type, FormatContext & ctx) const {
+    return format_to(ctx.out(), "{}", to_string(order_type));
+  }
+};
+
+template <>
 struct formatter<SellOrder> {
   template <typename ParseContext>
   constexpr auto parse(ParseContext & ctx) {
@@ -58,12 +71,14 @@ struct formatter<SellOrder> {
 
   template <typename FormatContext>
   auto format(const SellOrder & order, FormatContext & ctx) const {
+    std::string_view const order_type_str = order.type == SellOrderType::Auction ? "on auction " : "";
+
     if (order.quantity == 1) {
-      return format_to(ctx.out(), "#{}: {} is selling a {} for {} funds until {}", order.id, order.user_name,
-                       order.item_name, order.price, order.expiration_time);
+      return format_to(ctx.out(), "#{}: {} is selling a {} for {} funds {}until {}", order.id, order.seller_name,
+                       order.item_name, order.price, order_type_str, order.expiration_time);
     } else {
-      return format_to(ctx.out(), "#{}: {} is selling {} {}(s) for {} funds until {}", order.id, order.user_name,
-                       order.quantity, order.item_name, order.price, order.expiration_time);
+      return format_to(ctx.out(), "#{}: {} is selling {} {}(s) for {} funds {}until {}", order.id, order.seller_name,
+                       order.quantity, order.item_name, order_type_str, order.price, order.expiration_time);
     }
   }
 };
@@ -103,16 +118,29 @@ std::string view_items(UserConnection & connection, std::string_view) {
   return fmt::format("Items: {}", fmt::join(result.value(), ", "));
 }
 
-// args should be in the format "item_name <quantity> <price>".
+// args should be in the format "[immediate|auction] <item_name> [quantity] <price>".
 // Price is mandatory, quantity is optional and defaults to 1.
 // Examples:
-// - "arrow 5 10" -> {"arrow", .quantity=5, .price=10}
-// - "holy sword 1 100" -> {"holy sword", .quantity=1, .price=100}
-// - "arrow 10" -> {"arrow", .quantity=1, .price=10}
+// - "arrow 5 10" -> {"arrow", .quantity=5, .price=10, .type=Immediate}
+// - "holy sword 1 100" -> {"holy sword", .quantity=1, .price=100, .type=Immediate}
+// - "arrow 10" -> {"arrow", .quantity=1, .price=10, .type=Immediate}
+// - "immidiate arrow 10 5" -> {"arrow", .quantity=10, .price=5, .type=Immediate}
+// - "auction arrow 10 5" -> {"arrow", .quantity=10, .price=5, .type=Auction}
 std::string sell(UserConnection & connection, std::string_view args) {
+  // parse optional order type, if none - use immediate
+  SellOrderType order_type = SellOrderType::Immediate;
+  std::size_t const space_pos = args.find(' ');
+  if (space_pos != std::string_view::npos) {
+    if (auto const parsed = parse_SellOrderType(args.substr(0, space_pos))) {
+      order_type = *parsed;
+      args = args.substr(space_pos + 1);
+    }
+  }
+
   auto const sell_order = parse_sell_order(args);
   if (!sell_order) {
-    return "Failed to place sell order. Expected: 'sell <item_name> [quantity] <price>' (quantity defaults to 1)";
+    return "Failed to place sell order. Expected: 'sell [immediate|auction] <item_name> [<quantity>] <price>'. "
+           "Default type is 'immediate' and default quantity is 1";
   }
   auto const & [item_name, quantity, price] = *sell_order;
 
@@ -123,12 +151,13 @@ std::string sell(UserConnection & connection, std::string_view args) {
   // format expiration time as "YYYY-MM-DD HH:MM:SS", like "2021-01-01 00:00:00"
   auto const expiration_time_str = fmt::format("{:%Y-%m-%d %H:%M:%S}", expiration_time);
 
-  auto result =
-      connection.storage->place_sell_order(connection.user.id, item_name, quantity, price, expiration_time_str);
+  auto result = connection.storage->place_sell_order(order_type, connection.user.id, item_name, quantity, price,
+                                                     expiration_time_str);
   if (!result) {
-    return fmt::format("Failed to place sell order for {} {}(s) with error: {}", quantity, item_name, result.error());
+    return fmt::format("Failed to place {} sell order for {} {}(s) with error: {}", order_type, quantity, item_name,
+                       result.error());
   }
-  return fmt::format("Successfully placed sell order for {} {}(s)", quantity, item_name);
+  return fmt::format("Successfully placed {} sell order for {} {}(s)", order_type, quantity, item_name);
 }
 
 std::string view_sell_orders(UserConnection & connection, std::string_view args) {
