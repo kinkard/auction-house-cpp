@@ -8,6 +8,9 @@
 #include <memory>
 #include <ostream>
 
+uint64_t constexpr expiration_time = 1609459200;
+std::string_view constexpr expiration_time_str = "2021-01-01 00:00";
+
 class StorageTest : public ::testing::Test {
 protected:
   void SetUp() override {
@@ -167,22 +170,22 @@ TEST_P(GeneralSellOrderTest, negative) {
   EXPECT_THAT(*storage->view_sell_orders(), testing::IsEmpty());
 
   // try to sell more than we have
-  ASSERT_FALSE(storage->place_sell_order(order_type, user.id, "item1", 110, 10, "2021-01-01 00:00"));
+  ASSERT_FALSE(storage->place_sell_order(order_type, user.id, "item1", 110, 10, expiration_time));
 
   // try to sell negative amount
-  ASSERT_FALSE(storage->place_sell_order(order_type, user.id, "item1", -10, 10, "2021-01-01 00:00"));
+  ASSERT_FALSE(storage->place_sell_order(order_type, user.id, "item1", -10, 10, expiration_time));
 
   // try to sell for negative price
-  ASSERT_FALSE(storage->place_sell_order(order_type, user.id, "item1", 10, -10, "2021-01-01 00:00"));
+  ASSERT_FALSE(storage->place_sell_order(order_type, user.id, "item1", 10, -10, expiration_time));
 
   // try to sell non-existing item
-  ASSERT_FALSE(storage->place_sell_order(order_type, user.id, "non existing item", 10, 10, "2021-01-01 00:00"));
+  ASSERT_FALSE(storage->place_sell_order(order_type, user.id, "non existing item", 10, 10, expiration_time));
 
   // try to sell to from non-existing user
-  ASSERT_FALSE(storage->place_sell_order(order_type, 100, "item1", 10, 10, "2021-01-01 00:00"));
+  ASSERT_FALSE(storage->place_sell_order(order_type, 100, "item1", 10, 10, expiration_time));
 
   // cannot sell funds
-  ASSERT_FALSE(storage->place_sell_order(order_type, user.id, "funds", 10, 10, "2021-01-01 00:00"));
+  ASSERT_FALSE(storage->place_sell_order(order_type, user.id, "funds", 10, 10, expiration_time));
 
   // Finally, nothing should be changed
   EXPECT_THAT(*storage->view_sell_orders(), testing::IsEmpty());
@@ -200,119 +203,143 @@ TEST_P(GeneralSellOrderTest, positive) {
       testing::ElementsAre(std::make_pair("funds", 100), std::make_pair("item1", 10), std::make_pair("item2", 20)));
 
   for (int i = 1; i < 10; ++i) {
-    ASSERT_TRUE(storage->place_sell_order(order_type, user.id, "item1", 1, 10 + i, "2021-01-01 00:00:00"));
+    ASSERT_TRUE(storage->place_sell_order(order_type, user.id, "item1", 1, 10 + i, expiration_time));
     EXPECT_THAT(*storage->view_items(user.id),
                 testing::ElementsAre(std::make_pair("funds", 100), std::make_pair("item1", 10 - i),
                                      std::make_pair("item2", 20)));
   }
 
-  ASSERT_TRUE(storage->place_sell_order(order_type, user.id, "item2", 20, 100, "2021-01-01 00:00:00"));
+  ASSERT_TRUE(storage->place_sell_order(order_type, user.id, "item2", 15, 100, expiration_time));
+  EXPECT_THAT(
+      *storage->view_items(user.id),
+      testing::ElementsAre(std::make_pair("funds", 100), std::make_pair("item1", 1), std::make_pair("item2", 5)));
+
+  ASSERT_TRUE(storage->place_sell_order(order_type, user.id, "item2", 5, 100, expiration_time + 1));
   EXPECT_THAT(*storage->view_items(user.id),
               testing::ElementsAre(std::make_pair("funds", 100), std::make_pair("item1", 1)));
 
-  auto result = storage->view_sell_orders();
-  ASSERT_TRUE(result) << result.error();
-  EXPECT_THAT(result.value(), testing::ElementsAre(
-                                  SellOrder{
-                                      .id = 1,
-                                      .seller_name = "user",
-                                      .item_name = "item1",
-                                      .quantity = 1,
-                                      .price = 11,
-                                      .expiration_time = "2021-01-01 00:00:00",
-                                      .type = order_type,
-                                  },
-                                  SellOrder{
-                                      .id = 2,
-                                      .seller_name = "user",
-                                      .item_name = "item1",
-                                      .quantity = 1,
-                                      .price = 12,
-                                      .expiration_time = "2021-01-01 00:00:00",
-                                      .type = order_type,
-                                  },
-                                  SellOrder{
-                                      .id = 3,
-                                      .seller_name = "user",
-                                      .item_name = "item1",
-                                      .quantity = 1,
-                                      .price = 13,
-                                      .expiration_time = "2021-01-01 00:00:00",
-                                      .type = order_type,
-                                  },
-                                  SellOrder{
-                                      .id = 4,
-                                      .seller_name = "user",
-                                      .item_name = "item1",
-                                      .quantity = 1,
-                                      .price = 14,
-                                      .expiration_time = "2021-01-01 00:00:00",
-                                      .type = order_type,
-                                  },
-                                  SellOrder{
-                                      .id = 5,
-                                      .seller_name = "user",
-                                      .item_name = "item1",
-                                      .quantity = 1,
-                                      .price = 15,
-                                      .expiration_time = "2021-01-01 00:00:00",
-                                      .type = order_type,
-                                  },
-                                  SellOrder{
-                                      .id = 6,
-                                      .seller_name = "user",
-                                      .item_name = "item1",
-                                      .quantity = 1,
-                                      .price = 16,
-                                      .expiration_time = "2021-01-01 00:00:00",
-                                      .type = order_type,
-                                  },
-                                  SellOrder{
-                                      .id = 7,
-                                      .seller_name = "user",
-                                      .item_name = "item1",
-                                      .quantity = 1,
-                                      .price = 17,
-                                      .expiration_time = "2021-01-01 00:00:00",
-                                      .type = order_type,
-                                  },
-                                  SellOrder{
-                                      .id = 8,
-                                      .seller_name = "user",
-                                      .item_name = "item1",
-                                      .quantity = 1,
-                                      .price = 18,
-                                      .expiration_time = "2021-01-01 00:00:00",
-                                      .type = order_type,
-                                  },
-                                  SellOrder{
-                                      .id = 9,
-                                      .seller_name = "user",
-                                      .item_name = "item1",
-                                      .quantity = 1,
-                                      .price = 19,
-                                      .expiration_time = "2021-01-01 00:00:00",
-                                      .type = order_type,
-                                  },
-                                  SellOrder{
-                                      .id = 10,
-                                      .seller_name = "user",
-                                      .item_name = "item2",
-                                      .quantity = 20,
-                                      .price = 100,
-                                      .expiration_time = "2021-01-01 00:00:00",
-                                      .type = order_type,
-                                  }));
+  EXPECT_THAT(*storage->view_sell_orders(), testing::ElementsAre(
+                                                SellOrder{
+                                                    .id = 1,
+                                                    .seller_name = "user",
+                                                    .item_name = "item1",
+                                                    .quantity = 1,
+                                                    .price = 11,
+                                                    .expiration_time = "2021-01-01 00:00:00",
+                                                    .type = order_type,
+                                                },
+                                                SellOrder{
+                                                    .id = 2,
+                                                    .seller_name = "user",
+                                                    .item_name = "item1",
+                                                    .quantity = 1,
+                                                    .price = 12,
+                                                    .expiration_time = "2021-01-01 00:00:00",
+                                                    .type = order_type,
+                                                },
+                                                SellOrder{
+                                                    .id = 3,
+                                                    .seller_name = "user",
+                                                    .item_name = "item1",
+                                                    .quantity = 1,
+                                                    .price = 13,
+                                                    .expiration_time = "2021-01-01 00:00:00",
+                                                    .type = order_type,
+                                                },
+                                                SellOrder{
+                                                    .id = 4,
+                                                    .seller_name = "user",
+                                                    .item_name = "item1",
+                                                    .quantity = 1,
+                                                    .price = 14,
+                                                    .expiration_time = "2021-01-01 00:00:00",
+                                                    .type = order_type,
+                                                },
+                                                SellOrder{
+                                                    .id = 5,
+                                                    .seller_name = "user",
+                                                    .item_name = "item1",
+                                                    .quantity = 1,
+                                                    .price = 15,
+                                                    .expiration_time = "2021-01-01 00:00:00",
+                                                    .type = order_type,
+                                                },
+                                                SellOrder{
+                                                    .id = 6,
+                                                    .seller_name = "user",
+                                                    .item_name = "item1",
+                                                    .quantity = 1,
+                                                    .price = 16,
+                                                    .expiration_time = "2021-01-01 00:00:00",
+                                                    .type = order_type,
+                                                },
+                                                SellOrder{
+                                                    .id = 7,
+                                                    .seller_name = "user",
+                                                    .item_name = "item1",
+                                                    .quantity = 1,
+                                                    .price = 17,
+                                                    .expiration_time = "2021-01-01 00:00:00",
+                                                    .type = order_type,
+                                                },
+                                                SellOrder{
+                                                    .id = 8,
+                                                    .seller_name = "user",
+                                                    .item_name = "item1",
+                                                    .quantity = 1,
+                                                    .price = 18,
+                                                    .expiration_time = "2021-01-01 00:00:00",
+                                                    .type = order_type,
+                                                },
+                                                SellOrder{
+                                                    .id = 9,
+                                                    .seller_name = "user",
+                                                    .item_name = "item1",
+                                                    .quantity = 1,
+                                                    .price = 19,
+                                                    .expiration_time = "2021-01-01 00:00:00",
+                                                    .type = order_type,
+                                                },
+                                                SellOrder{
+                                                    .id = 10,
+                                                    .seller_name = "user",
+                                                    .item_name = "item2",
+                                                    .quantity = 15,
+                                                    .price = 100,
+                                                    .expiration_time = "2021-01-01 00:00:00",
+                                                    .type = order_type,
+                                                },
+                                                SellOrder{
+                                                    .id = 11,
+                                                    .seller_name = "user",
+                                                    .item_name = "item2",
+                                                    .quantity = 5,
+                                                    .price = 100,
+                                                    .expiration_time = "2021-01-01 00:00:01",
+                                                    .type = order_type,
+                                                }));
 
   // cancel expired orders
-  auto cancel_result = storage->cancel_expired_sell_orders("2021-01-01 00:00:00");
+  auto cancel_result = storage->cancel_expired_sell_orders(expiration_time);
   ASSERT_TRUE(cancel_result) << cancel_result.error();
+  EXPECT_THAT(*storage->view_sell_orders(), testing::ElementsAre(SellOrder{
+                                                .id = 11,
+                                                .seller_name = "user",
+                                                .item_name = "item2",
+                                                .quantity = 5,
+                                                .price = 100,
+                                                .expiration_time = "2021-01-01 00:00:01",
+                                                .type = order_type,
+                                            }));
+  EXPECT_THAT(
+      *storage->view_items(user.id),
+      testing::ElementsAre(std::make_pair("funds", 100), std::make_pair("item1", 10), std::make_pair("item2", 15)));
 
-  // check that items are returned back
+  // And finally
+  ASSERT_TRUE(storage->cancel_expired_sell_orders(expiration_time + 2));
   EXPECT_THAT(
       *storage->view_items(user.id),
       testing::ElementsAre(std::make_pair("funds", 100), std::make_pair("item1", 10), std::make_pair("item2", 20)));
-
   EXPECT_THAT(*storage->view_sell_orders(), testing::IsEmpty());
 }
 

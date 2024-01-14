@@ -17,7 +17,7 @@ tl::expected<Storage, std::string> Storage::open(const char * path) {
       "CREATE TABLE IF NOT EXISTS users ("
       "id INTEGER PRIMARY KEY,"
       "username TEXT NOT NULL UNIQUE"
-      ");");
+      ") STRICT;");
   if (!result) {
     return tl::make_unexpected(fmt::format("Failed to create 'users' table: {}", result.error()));
   }
@@ -26,7 +26,7 @@ tl::expected<Storage, std::string> Storage::open(const char * path) {
       "CREATE TABLE IF NOT EXISTS items ("
       "id INTEGER PRIMARY KEY,"
       "name TEXT NOT NULL UNIQUE"
-      ");");
+      ") STRICT;");
   if (!result) {
     return tl::make_unexpected(fmt::format("Failed to create 'items' table: {}", result.error()));
   }
@@ -53,11 +53,11 @@ tl::expected<Storage, std::string> Storage::open(const char * path) {
       "CREATE TABLE IF NOT EXISTS user_items ("
       "user_id INTEGER NOT NULL,"
       "item_id INTEGER NOT NULL,"
-      "quantity INTEGER NOT NULL DEFAULT 1,"
+      "quantity INTEGER NOT NULL CHECK(quantity >= 0),"
       "FOREIGN KEY (user_id) REFERENCES users (id),"
       "FOREIGN KEY (item_id) REFERENCES items (id),"
       "PRIMARY KEY (user_id, item_id)"
-      ");");
+      ") STRICT;");
   if (!result) {
     return tl::make_unexpected(fmt::format("Failed to create 'user_items' table: {}", result.error()));
   }
@@ -67,9 +67,12 @@ tl::expected<Storage, std::string> Storage::open(const char * path) {
       "id INTEGER PRIMARY KEY,"
       "seller_id INTEGER NOT NULL,"
       "item_id INTEGER NOT NULL,"
-      "quantity INTEGER NOT NULL,"
-      "price INTEGER NOT NULL,"
-      "expiration_time TEXT NOT NULL,"
+      "quantity INTEGER NOT NULL CHECK(quantity > 0),"
+      "price INTEGER NOT NULL CHECK(price > 0),"
+      // Unix timestamp in seconds
+      // Use SELECT DATETIME(1793956207, 'unixepoch'); to convert to human readable format
+      // and std::chrono::seconds(std::time(NULL)); to get current time
+      "expiration_time INTEGER NOT NULL,"
       // buyer_id is special
       // - equal to the seller_id for immediate orders
       // - NULL for aution orders without bid
@@ -79,9 +82,14 @@ tl::expected<Storage, std::string> Storage::open(const char * path) {
       "FOREIGN KEY (seller_id) REFERENCES users (id),"
       "FOREIGN KEY (buyer_id) REFERENCES users (id),"
       "FOREIGN KEY (item_id) REFERENCES items (id)"
-      ");");
+      ") STRICT;");
   if (!result) {
     return tl::make_unexpected(fmt::format("Failed to create 'sell_orders' table: {}", result.error()));
+  }
+  // Create an index to speed up cancel_expired_sell_orders()
+  result = db->execute("CREATE INDEX IF NOT EXISTS sell_orders_expiration_time ON sell_orders (expiration_time);");
+  if (!result) {
+    return tl::make_unexpected(fmt::format("Failed to create 'sell_orders_expiration_time' index: {}", result.error()));
   }
 
   return Storage(std::move(*db), *funds_item_id);
@@ -196,7 +204,7 @@ tl::expected<std::vector<std::pair<std::string, int>>, std::string> Storage::vie
 
 tl::expected<void, std::string> Storage::place_sell_order(SellOrderType order_type, UserId seller_id,
                                                           std::string_view item_name, int quantity, int price,
-                                                          std::string_view expiration_time) {
+                                                          int64_t unix_expiration_time) {
   if (quantity < 0) {
     return tl::make_unexpected("Cannot sell negative amount");
   }
@@ -246,7 +254,7 @@ tl::expected<void, std::string> Storage::place_sell_order(SellOrderType order_ty
   auto result = db.execute(
       "INSERT INTO sell_orders (seller_id, item_id, quantity, price, expiration_time, buyer_id)"
       "VALUES (?1, ?2, ?3, ?4, ?5, ?6);",
-      seller_id, *item_id, quantity, price, expiration_time, buyer_id);
+      seller_id, *item_id, quantity, price, unix_expiration_time, buyer_id);
   if (!result) {
     return tl::make_unexpected(fmt::format("Failed to place sell order: {}", result.error()));
   }
@@ -263,7 +271,7 @@ tl::expected<std::vector<SellOrder>, std::string> Storage::view_sell_orders() {
           "  items.name,"
           "  sell_orders.quantity,"
           "  sell_orders.price,"
-          "  sell_orders.expiration_time,"
+          "  DATETIME(sell_orders.expiration_time, 'unixepoch'),"
           "  sell_orders.seller_id,"
           "  sell_orders.buyer_id "
           "FROM sell_orders "
@@ -299,7 +307,7 @@ tl::expected<std::vector<SellOrder>, std::string> Storage::view_sell_orders() {
       });
 }
 
-tl::expected<void, std::string> Storage::cancel_expired_sell_orders(std::string_view now) {
+tl::expected<void, std::string> Storage::cancel_expired_sell_orders(uint64_t unix_now) {
   // Start transaction
   auto transaction_guard = db.begin_transaction();
   if (!transaction_guard) {
@@ -324,13 +332,13 @@ tl::expected<void, std::string> Storage::cancel_expired_sell_orders(std::string_
       "FROM aggregated_orders "
       "LEFT JOIN user_items ON user_items.user_id = aggregated_orders.seller_id "
       "  AND user_items.item_id = aggregated_orders.item_id;",
-      now);
+      unix_now);
   if (!update_result) {
     return tl::make_unexpected(fmt::format("Failed to cancel expired sell orders: {}", update_result.error()));
   }
 
   // Delete expired orders
-  auto delete_result = db.execute("DELETE FROM sell_orders WHERE expiration_time <= ?1;", now);
+  auto delete_result = db.execute("DELETE FROM sell_orders WHERE expiration_time <= ?1;", unix_now);
   if (!delete_result) {
     return tl::make_unexpected(fmt::format("Failed to delete expired sell orders: {}", delete_result.error()));
   }

@@ -75,13 +75,13 @@ public:
 
   // Place a sell order
   tl::expected<void, std::string> place_sell_order(SellOrderType order_type, UserId user_id, std::string_view item_name,
-                                                   int quantity, int price, std::string_view expiration_time);
+                                                   int quantity, int price, int64_t unix_expiration_time);
 
   // View all sell orders
   tl::expected<std::vector<SellOrder>, std::string> view_sell_orders();
 
   // Cancel expired sell orders
-  tl::expected<void, std::string> cancel_expired_sell_orders(std::string_view now);
+  tl::expected<void, std::string> cancel_expired_sell_orders(uint64_t unix_now);
 
 private:
   bool is_valid_user(UserId user_id);

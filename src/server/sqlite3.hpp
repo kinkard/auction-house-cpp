@@ -69,7 +69,7 @@ public:
 
     // Internal implementation of bind for different types
     tl::expected<void, std::string> bind(int index, std::string_view value);
-    tl::expected<void, std::string> bind(int index, int value);
+    tl::expected<void, std::string> bind(int index, int64_t value);
     tl::expected<void, std::string> bind(int index, std::nullopt_t);
 
     template <typename T>

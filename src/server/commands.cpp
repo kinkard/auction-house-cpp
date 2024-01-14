@@ -145,14 +145,11 @@ std::string sell(UserConnection & connection, std::string_view args) {
   auto const & [item_name, quantity, price] = *sell_order;
 
   // expiration time is now + 5min
-  namespace ch = std::chrono;
-  constexpr auto const order_lifetime = ch::minutes(5);
-  auto const expiration_time = ch::round<ch::seconds>(ch::system_clock::now() + order_lifetime);
-  // format expiration time as "YYYY-MM-DD HH:MM:SS", like "2021-01-01 00:00:00"
-  auto const expiration_time_str = fmt::format("{:%Y-%m-%d %H:%M:%S}", expiration_time);
+  constexpr auto const order_lifetime = std::chrono::minutes(5);
+  int64_t const unix_expiration_time = (std::chrono::seconds(std::time(NULL)) + order_lifetime).count();
 
   auto result = connection.storage->place_sell_order(order_type, connection.user.id, item_name, quantity, price,
-                                                     expiration_time_str);
+                                                     unix_expiration_time);
   if (!result) {
     return fmt::format("Failed to place {} sell order for {} {}(s) with error: {}", order_type, quantity, item_name,
                        result.error());
