@@ -209,10 +209,20 @@ tl::expected<void, std::string> Storage::place_sell_order(SellOrderType order_ty
   }
 
   return get_item_id(item_name)
-      // First, reduce item quantity from the seller
+      // First, take items from the seller
       .and_then(
           [&](int item_id) { return withdraw_inner(seller_id, item_id, quantity).map([&]() { return item_id; }); })
-      .map_error([&](auto &&) { return fmt::format("Failed to sell {}. User doesn't have enough", item_name); })
+      .map_error([&](auto &&) { return fmt::format("Not enough {}(s) to sell", item_name); })
+
+      // Then we want to take a fee from the seller
+      .and_then([&](int item_id) {
+        // Fee is 5% of the price + 1 fixed fee
+        int const fee = price / 20 + 1;
+        return withdraw_inner(seller_id, funds_item_id, fee).map([&]() { return item_id; }).map_error([&](auto &&) {
+          return fmt::format("Not enough funds to pay {} fee (which is 5% + 1)", item_name, fee);
+        });
+      })
+
       // Second, insert the order
       .and_then([&](int item_id) {
         return db.execute(
