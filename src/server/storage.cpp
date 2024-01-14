@@ -157,26 +157,19 @@ tl::expected<void, std::string> Storage::withdraw(UserId user_id, std::string_vi
     return tl::make_unexpected("Failed to withdraw item. Item doesn't exists");
   }
 
-  // if user doesn't have enough items then it cannot be withdrawn
-  auto select_user_item_count =
-      this->db.query("SELECT quantity FROM user_items WHERE user_id = ?1 AND item_id = ?2;", user_id, *item_id)
-          .and_then([&](auto select) -> tl::expected<int, std::string> {
-            int rc = sqlite3_step(select.inner);
-            if (rc != SQLITE_ROW) {
-              return tl::make_unexpected(fmt::format("Failed to execute SQL statement: {}", sqlite3_errstr(rc)));
-            }
-            return sqlite3_column_int(select.inner, 0);
-          });
-  if (!select_user_item_count) {
-    return tl::make_unexpected(select_user_item_count.error());
-  }
-  if (select_user_item_count.value() < quantity) {
-    return tl::make_unexpected(
-        fmt::format("User doesn't have enough items to withdraw: {}", select_user_item_count.value()));
+  auto const user_item_quantity = get_items_quantity(user_id, *item_id);
+  if (!user_item_quantity || *user_item_quantity < quantity) {
+    return tl::make_unexpected(fmt::format("Failed to withdraw item. User doesn't have {} {}(s)", quantity, item_name));
   }
 
-  return this->db.execute("UPDATE user_items SET quantity = ?3 WHERE user_id = ?1 AND item_id = ?2;", user_id, *item_id,
-                          quantity);
+  tl::expected<void, std::string> reduce_result;
+  if (*item_id == funds_item_id || *user_item_quantity > quantity) {
+    reduce_result = db.execute("UPDATE user_items SET quantity = quantity - ?3 WHERE user_id = ?1 AND item_id = ?2;",
+                               user_id, *item_id, quantity);
+  } else {
+    reduce_result = db.execute("DELETE FROM user_items WHERE user_id = ?1 AND item_id = ?2;", user_id, *item_id);
+  }
+  return reduce_result;
 }
 
 tl::expected<std::vector<std::pair<std::string, int>>, std::string> Storage::view_items(UserId user_id) {
@@ -219,24 +212,9 @@ tl::expected<void, std::string> Storage::place_sell_order(SellOrderType order_ty
   if (!item_id) {
     return tl::make_unexpected("Failed to sell item. Item doesn't exists");
   }
-
-  auto items_quantity =
-      db.query(
-            "SELECT quantity FROM user_items "
-            "WHERE user_id = ?1 AND item_id = ?2;",
-            seller_id, *item_id)
-          .and_then([&](auto select) -> tl::expected<int, std::string> {
-            int rc = sqlite3_step(select.inner);
-            if (rc != SQLITE_ROW) {
-              return tl::make_unexpected(fmt::format("Failed to execute SQL statement: {}", sqlite3_errstr(rc)));
-            }
-            return sqlite3_column_int(select.inner, 0);
-          });
-  if (!items_quantity) {
-    return tl::make_unexpected(fmt::format("Failed to get items for user {}: {}", seller_id, items_quantity.error()));
-  }
-  if (*items_quantity < quantity) {
-    return tl::make_unexpected(fmt::format("User doesn't have enough {}(s) to sell", item_name));
+  auto const seller_item_quantity = get_items_quantity(seller_id, *item_id);
+  if (!seller_item_quantity || *seller_item_quantity < quantity) {
+    return tl::make_unexpected(fmt::format("Failed to sell item. User doesn't have {} {}(s)", quantity, item_name));
   }
 
   auto begin_result = db.execute("BEGIN TRANSACTION;");
@@ -246,7 +224,7 @@ tl::expected<void, std::string> Storage::place_sell_order(SellOrderType order_ty
 
   // first, reduce the user's items and remove the whole row if quantity is 0
   tl::expected<void, std::string> reduce_result;
-  if (*items_quantity > quantity) {
+  if (*seller_item_quantity > quantity) {
     reduce_result = db.execute("UPDATE user_items SET quantity = quantity - ?3 WHERE user_id = ?1 AND item_id = ?2;",
                                seller_id, *item_id, quantity);
   } else {
@@ -383,6 +361,18 @@ bool Storage::is_valid_user(UserId user_id) {
 
 std::optional<int> Storage::get_item_id(std::string_view item_name) {
   auto stmt = this->db.query("SELECT id FROM items WHERE name = ?1;", item_name);
+  if (!stmt) {
+    return std::nullopt;
+  }
+  int rc = sqlite3_step(stmt->inner);
+  if (rc != SQLITE_ROW) {
+    return std::nullopt;
+  }
+  return { sqlite3_column_int(stmt->inner, 0) };
+}
+
+std::optional<int> Storage::get_items_quantity(UserId user_id, int item_id) {
+  auto stmt = this->db.query("SELECT quantity FROM user_items WHERE user_id = ?1 AND item_id = ?2;", user_id, item_id);
   if (!stmt) {
     return std::nullopt;
   }

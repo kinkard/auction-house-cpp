@@ -40,8 +40,13 @@ TEST_F(StorageTest, funds) {
   ASSERT_TRUE(storage->deposit(user.id, "funds", 10));
   EXPECT_THAT(*storage->view_items(user.id), testing::ElementsAre(std::make_pair("funds", 10)));
 
-  ASSERT_TRUE(storage->withdraw(user.id, "funds", 5));
-  EXPECT_THAT(*storage->view_items(user.id), testing::ElementsAre(std::make_pair("funds", 5)));
+  ASSERT_TRUE(storage->withdraw(user.id, "funds", 7));
+  EXPECT_THAT(*storage->view_items(user.id), testing::ElementsAre(std::make_pair("funds", 3)));
+
+  ASSERT_TRUE(storage->withdraw(user.id, "funds", 3));
+  EXPECT_THAT(*storage->view_items(user.id), testing::ElementsAre(std::make_pair("funds", 0)));
+
+  ASSERT_TRUE(storage->deposit(user.id, "funds", 5));
 
   // get_or_create_user should not create new funds
   user = *storage->get_or_create_user("user1");

@@ -85,6 +85,6 @@ public:
 
 private:
   bool is_valid_user(UserId user_id);
-
   std::optional<int> get_item_id(std::string_view item_name);
+  std::optional<int> get_items_quantity(UserId user_id, int item_id);
 };
