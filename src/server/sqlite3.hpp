@@ -113,6 +113,54 @@ public:
     return stmt;
   }
 
+  // RAII wrapper for transaction
+  class TransactionGuard final {
+    Sqlite3 & db;
+    bool committed = false;
+
+  public:
+    TransactionGuard(Sqlite3 & db) : db(db) {}
+    ~TransactionGuard() {
+      if (!committed) {
+        db.execute("ROLLBACK;");
+      }
+    }
+
+    TransactionGuard(TransactionGuard const &) = delete;
+    TransactionGuard & operator=(TransactionGuard const &) = delete;
+    TransactionGuard(TransactionGuard && other) noexcept : db(other.db), committed(other.committed) {
+      other.committed = true;
+    }
+    TransactionGuard & operator=(TransactionGuard && other) noexcept {
+      // move and swap idiom via local varialbe
+      TransactionGuard local = std::move(other);
+      std::swap(db, local.db);
+      std::swap(committed, local.committed);
+      return *this;
+    }
+
+    // Commits the transaction
+    tl::expected<void, std::string> commit() {
+      if (committed) {
+        return tl::make_unexpected("Transaction already committed");
+      }
+      auto result = db.execute("COMMIT;");
+      if (result) {
+        committed = true;
+      }
+      return result;
+    }
+  };
+
+  // Begins a transaction. If TransactionGuard is destroyed without calling `commit`, the transaction is rolled back
+  tl::expected<TransactionGuard, std::string> begin_transaction() {
+    auto result = execute("BEGIN;");
+    if (!result) {
+      return tl::make_unexpected(std::move(result.error()));
+    }
+    return TransactionGuard(*this);
+  }
+
 private:
   // Prepares SQL statement for execution. Use `query` instead
   tl::expected<Statement, std::string> prepare(std::string_view sql);

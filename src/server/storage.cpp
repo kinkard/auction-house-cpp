@@ -217,9 +217,9 @@ tl::expected<void, std::string> Storage::place_sell_order(SellOrderType order_ty
     return tl::make_unexpected(fmt::format("Failed to sell item. User doesn't have {} {}(s)", quantity, item_name));
   }
 
-  auto begin_result = db.execute("BEGIN TRANSACTION;");
-  if (!begin_result) {
-    return tl::make_unexpected(fmt::format("Failed to start transaction: {}", begin_result.error()));
+  auto transaction_guard = db.begin_transaction();
+  if (!transaction_guard) {
+    return tl::make_unexpected(fmt::format("Failed to start transaction: {}", transaction_guard.error()));
   }
 
   // first, reduce the user's items and remove the whole row if quantity is 0
@@ -231,7 +231,6 @@ tl::expected<void, std::string> Storage::place_sell_order(SellOrderType order_ty
     reduce_result = db.execute("DELETE FROM user_items WHERE user_id = ?1 AND item_id = ?2;", seller_id, *item_id);
   }
   if (!reduce_result) {
-    db.execute("ROLLBACK;");
     return tl::make_unexpected(fmt::format("Failed to reduce user items: {}", reduce_result.error()));
   }
 
@@ -249,16 +248,10 @@ tl::expected<void, std::string> Storage::place_sell_order(SellOrderType order_ty
       "VALUES (?1, ?2, ?3, ?4, ?5, ?6);",
       seller_id, *item_id, quantity, price, expiration_time, buyer_id);
   if (!result) {
-    db.execute("ROLLBACK;");
     return tl::make_unexpected(fmt::format("Failed to place sell order: {}", result.error()));
   }
 
-  auto commit_result = db.execute("COMMIT;");
-  if (!commit_result) {
-    return tl::make_unexpected(fmt::format("Failed to commit transaction: {}", commit_result.error()));
-  }
-
-  return {};
+  return transaction_guard->commit();
 }
 
 tl::expected<std::vector<SellOrder>, std::string> Storage::view_sell_orders() {
@@ -308,9 +301,9 @@ tl::expected<std::vector<SellOrder>, std::string> Storage::view_sell_orders() {
 
 tl::expected<void, std::string> Storage::cancel_expired_sell_orders(std::string_view now) {
   // Start transaction
-  auto begin_result = db.execute("BEGIN TRANSACTION;");
-  if (!begin_result) {
-    return tl::make_unexpected(fmt::format("Failed to start transaction: {}", begin_result.error()));
+  auto transaction_guard = db.begin_transaction();
+  if (!transaction_guard) {
+    return tl::make_unexpected(fmt::format("Failed to start transaction: {}", transaction_guard.error()));
   }
 
   // Combine similar (by user_id and item_id) orders and add them to user_items
@@ -333,18 +326,16 @@ tl::expected<void, std::string> Storage::cancel_expired_sell_orders(std::string_
       "  AND user_items.item_id = aggregated_orders.item_id;",
       now);
   if (!update_result) {
-    db.execute("ROLLBACK;");
     return tl::make_unexpected(fmt::format("Failed to cancel expired sell orders: {}", update_result.error()));
   }
 
   // Delete expired orders
   auto delete_result = db.execute("DELETE FROM sell_orders WHERE expiration_time <= ?1;", now);
   if (!delete_result) {
-    db.execute("ROLLBACK;");
     return tl::make_unexpected(fmt::format("Failed to delete expired sell orders: {}", delete_result.error()));
   }
 
-  return db.execute("COMMIT;");
+  return transaction_guard->commit();
 }
 
 bool Storage::is_valid_user(UserId user_id) {
