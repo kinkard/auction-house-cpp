@@ -90,6 +90,10 @@ std::string ping(UserConnection &, std::string_view) {
   return "pong";
 }
 
+std::string whoami(UserConnection & connection, std::string_view) {
+  return fmt::format("{}", connection.user.username);
+}
+
 std::string deposit(UserConnection & connection, std::string_view args) {
   auto const [item_name, quantity] = parse_item_name_and_count(args);
 

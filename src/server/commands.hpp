@@ -11,6 +11,7 @@ namespace commands {
 using Type = std::string (*)(UserConnection &, std::string_view);
 
 std::string ping(UserConnection & connection, std::string_view args);
+std::string whoami(UserConnection & connection, std::string_view args);
 std::string deposit(UserConnection & connection, std::string_view args);
 std::string withdraw(UserConnection & connection, std::string_view args);
 std::string view_items(UserConnection & connection, std::string_view);

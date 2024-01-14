@@ -48,6 +48,7 @@ awaitable<void> process_user_commands(tcp::socket socket, UserConnection connect
 
   std::unordered_map<std::string_view, commands::Type> const commands = {
     { "ping", commands::ping },
+    { "whoami", commands::whoami },
     { "deposit", commands::deposit },
     { "withdraw", commands::withdraw },
     { "view_items", commands::view_items },
