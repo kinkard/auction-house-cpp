@@ -131,7 +131,7 @@ tl::expected<void, std::string> Storage::deposit(UserId user_id, std::string_vie
   }
 
   if (!this->is_valid_user(user_id)) {
-    return tl::make_unexpected(fmt::format("User with id={} doesn't exist", user_id));
+    return tl::make_unexpected(fmt::format("No such user with id={}", user_id));
   }
 
   // We do INSERT OR IGNORE to make sure that the item exists
@@ -149,14 +149,12 @@ tl::expected<void, std::string> Storage::withdraw(UserId user_id, std::string_vi
   }
 
   if (!this->is_valid_user(user_id)) {
-    return tl::make_unexpected(fmt::format("User with id={} doesn't exist", user_id));
+    return tl::make_unexpected(fmt::format("No such user with id={}", user_id));
   }
 
   return get_item_id(item_name)
       .and_then([&](int item_id) { return withdraw_inner(user_id, item_id, quantity); })
-      .map_error([&](auto &&) {
-        return fmt::format("Failed to withdraw item. User doesn't have {} {}(s)", quantity, item_name);
-      });
+      .map_error([&](auto &&) { return fmt::format("Not enough {}(s) to withdraw", item_name); });
 }
 
 tl::expected<std::vector<std::pair<std::string, int>>, std::string> Storage::view_items(UserId user_id) {
@@ -319,7 +317,7 @@ tl::expected<void, std::string> Storage::cancel_expired_sell_orders(int64_t unix
 
 tl::expected<void, std::string> Storage::buy(UserId buyer_id, int sell_order_id) {
   if (!this->is_valid_user(buyer_id)) {
-    return tl::make_unexpected(fmt::format("User with id={} doesn't exist", buyer_id));
+    return tl::make_unexpected(fmt::format("No such user with id={}", buyer_id));
   }
 
   // as we have two types of orders, we need to check if the order is immediate or auction
@@ -376,7 +374,7 @@ tl::expected<void, std::string> Storage::buy(UserId buyer_id, int sell_order_id)
 
   // First, deduce funds from the buyer
   return withdraw_inner(buyer_id, funds_item_id, order->price)
-      .map_error([&](auto &&) { return fmt::format("User doesn't have enough funds"); })
+      .map_error([&](auto &&) { return fmt::format("Not enough funds to buy"); })
       // Second, add funds to the seller
       .and_then([&]() { return deposit_inner(order->seller_id, funds_item_id, order->price); })
       // Third, transfer item to the buyer
