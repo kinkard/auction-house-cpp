@@ -157,25 +157,30 @@ std::string help(UserConnection &, std::string_view) {
 std::string deposit(UserConnection & connection, std::string_view args) {
   auto const [item_name, quantity] = parse_item_name_and_count(args);
 
-  auto result = connection.storage->deposit(connection.user.id, item_name, quantity);
+  auto result = connection.shared_state->storage.deposit(connection.user.id, item_name, quantity);
   if (!result) {
     return fmt::format("Failed to deposit {} {}(s) with error: {}", quantity, item_name, result.error());
   }
+
+  connection.shared_state->transaction_log.log(
+      connection.user.id, fmt::format("deposited .item_id={} .quantity={}", result->item_id, quantity));
   return fmt::format("Successfully deposited {} {}(s)", quantity, item_name);
 }
 
 std::string withdraw(UserConnection & connection, std::string_view args) {
   auto const [item_name, quantity] = parse_item_name_and_count(args);
 
-  auto result = connection.storage->withdraw(connection.user.id, item_name, quantity);
+  auto result = connection.shared_state->storage.withdraw(connection.user.id, item_name, quantity);
   if (!result) {
     return fmt::format("Failed to withdraw {} {}(s) with error: {}", quantity, item_name, result.error());
   }
+  connection.shared_state->transaction_log.log(
+      connection.user.id, fmt::format("withdrawn .item_id={} .quantity={}", result->item_id, quantity));
   return fmt::format("Successfully withdrawn {} {}(s)", quantity, item_name);
 }
 
 std::string view_items(UserConnection & connection, std::string_view) {
-  auto result = connection.storage->view_items(connection.user.id);
+  auto result = connection.shared_state->storage.view_items(connection.user.id);
   if (!result) {
     return fmt::format("Failed to view items with error: {}", result.error());
   }
@@ -212,8 +217,8 @@ std::string sell(UserConnection & connection, std::string_view args) {
   constexpr auto const order_lifetime = std::chrono::minutes(5);
   int64_t const unix_expiration_time = (std::chrono::seconds(std::time(NULL)) + order_lifetime).count();
 
-  auto result = connection.storage->place_sell_order(order_type, connection.user.id, item_name, quantity, price,
-                                                     unix_expiration_time);
+  auto result = connection.shared_state->storage.place_sell_order(order_type, connection.user.id, item_name, quantity,
+                                                                  price, unix_expiration_time);
   if (!result) {
     return fmt::format("Failed to place {} sell order for {} {}(s) with error: {}", order_type, quantity, item_name,
                        result.error());
@@ -241,23 +246,25 @@ std::string buy(UserConnection & connection, std::string_view args) {
   }
 
   if (bid) {
-    auto result = connection.storage->place_bid_on_auction_sell_order(connection.user.id, sell_order_id, *bid);
+    auto result =
+        connection.shared_state->storage.place_bid_on_auction_sell_order(connection.user.id, sell_order_id, *bid);
     if (!result) {
       return fmt::format("Failed to place a bid on #{} auction sell order with error: {}", sell_order_id,
                          result.error());
     }
     return fmt::format("Successfully placed a bid on #{} auction sell order", sell_order_id);
   } else {
-    auto result = connection.storage->execute_immediate_sell_order(connection.user.id, sell_order_id);
+    auto result = connection.shared_state->storage.execute_immediate_sell_order(connection.user.id, sell_order_id);
     if (!result) {
       return fmt::format("Failed to execute #{} sell order with error: {}", sell_order_id, result.error());
     }
+    result->save_to(connection.shared_state->transaction_log);
     return fmt::format("Successfully executed #{} sell order", sell_order_id);
   }
 }
 
 std::string view_sell_orders(UserConnection & connection, std::string_view) {
-  auto result = connection.storage->view_sell_orders();
+  auto result = connection.shared_state->storage.view_sell_orders();
   if (!result) {
     return fmt::format("Failed to view sell orders with error: {}", result.error());
   }

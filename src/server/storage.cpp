@@ -129,7 +129,8 @@ tl::expected<User, std::string> Storage::get_or_create_user(std::string_view use
   return user_id;
 }
 
-tl::expected<void, std::string> Storage::deposit(UserId user_id, std::string_view item_name, int quantity) {
+tl::expected<ItemOperationInfo, std::string> Storage::deposit(UserId user_id, std::string_view item_name,
+                                                              int quantity) {
   if (quantity < 0) {
     return tl::make_unexpected("Cannot deposit negative amount");
   }
@@ -144,10 +145,15 @@ tl::expected<void, std::string> Storage::deposit(UserId user_id, std::string_vie
     return tl::make_unexpected(item_inserted.error());
   }
 
-  return get_item_id(item_name).and_then([&](int item_id) { return deposit_inner(user_id, item_id, quantity); });
+  return get_item_id(item_name).and_then([&](int item_id) {
+    return deposit_inner(user_id, item_id, quantity).map([&]() {
+      return ItemOperationInfo{ .item_id = item_id, quantity };
+    });
+  });
 }
 
-tl::expected<void, std::string> Storage::withdraw(UserId user_id, std::string_view item_name, int quantity) {
+tl::expected<ItemOperationInfo, std::string> Storage::withdraw(UserId user_id, std::string_view item_name,
+                                                               int quantity) {
   if (quantity < 0) {
     return tl::make_unexpected("Cannot withdraw negative amount");
   }
@@ -157,7 +163,11 @@ tl::expected<void, std::string> Storage::withdraw(UserId user_id, std::string_vi
   }
 
   return get_item_id(item_name)
-      .and_then([&](int item_id) { return withdraw_inner(user_id, item_id, quantity); })
+      .and_then([&](int item_id) {
+        return withdraw_inner(user_id, item_id, quantity).map([&]() {
+          return ItemOperationInfo{ .item_id = item_id, quantity };
+        });
+      })
       .map_error([&](auto &&) { return fmt::format("Not enough {}(s) to withdraw", item_name); });
 }
 
@@ -280,12 +290,48 @@ tl::expected<std::vector<SellOrder>, std::string> Storage::view_sell_orders() {
       });
 }
 
-tl::expected<void, std::string> Storage::process_expired_sell_orders(int64_t unix_now) {
+tl::expected<std::vector<SellOrderExecutionInfo>, std::string> Storage::process_expired_sell_orders(int64_t unix_now) {
   // Start transaction
   auto transaction_guard = db.begin_transaction();
   if (!transaction_guard) {
     return tl::make_unexpected(fmt::format("Failed to start transaction: {}", transaction_guard.error()));
   }
+
+  // UserId seller_id;
+  // UserId buyer_id;
+  // int item_id;
+  // int quantity;
+  // int price;
+
+  // get all executed auction orders
+  auto executed_auction_orders =
+      db.query(
+            "SELECT "
+            "  seller_id, "
+            "  buyer_id, "
+            "  item_id, "
+            "  quantity, "
+            "  price "
+            "FROM sell_orders "
+            "WHERE sell_orders.expiration_time <= ?1 AND buyer_id IS NOT NULL AND buyer_id != seller_id;",
+            unix_now)
+          .and_then([&](auto select) -> tl::expected<std::vector<SellOrderExecutionInfo>, std::string> {
+            std::vector<SellOrderExecutionInfo> orders;
+            int rc;
+            while ((rc = sqlite3_step(select.inner)) == SQLITE_ROW) {
+              orders.emplace_back(SellOrderExecutionInfo{
+                  .seller_id = sqlite3_column_int(select.inner, 0),
+                  .buyer_id = sqlite3_column_int(select.inner, 1),
+                  .item_id = sqlite3_column_int(select.inner, 2),
+                  .quantity = sqlite3_column_int(select.inner, 3),
+                  .price = sqlite3_column_int(select.inner, 4),
+              });
+            }
+            if (rc != SQLITE_DONE) {
+              return tl::make_unexpected(fmt::format("Failed to execute SQL statement: {}", sqlite3_errstr(rc)));
+            }
+            return orders;
+          });
 
   // Combine similar (by user_id and item_id) orders and add them to user_items
   auto update_result = db.execute(
@@ -334,10 +380,11 @@ tl::expected<void, std::string> Storage::process_expired_sell_orders(int64_t uni
     return tl::make_unexpected(fmt::format("Failed to delete expired sell orders: {}", delete_result.error()));
   }
 
-  return transaction_guard->commit();
+  return transaction_guard->commit().and_then([executed = std::move(executed_auction_orders)]() { return executed; });
 }
 
-tl::expected<void, std::string> Storage::execute_immediate_sell_order(UserId buyer_id, int sell_order_id) {
+tl::expected<SellOrderExecutionInfo, std::string> Storage::execute_immediate_sell_order(UserId buyer_id,
+                                                                                        int sell_order_id) {
   if (!this->is_valid_user(buyer_id)) {
     return tl::make_unexpected(fmt::format("No such user with id={}", buyer_id));
   }
@@ -352,6 +399,14 @@ tl::expected<void, std::string> Storage::execute_immediate_sell_order(UserId buy
   if (buyer_id == order->seller_id) {
     return tl::make_unexpected(fmt::format("You can't buy your own items"));
   }
+
+  auto order_execution_info = SellOrderExecutionInfo{
+    .seller_id = order->seller_id,
+    .buyer_id = buyer_id,
+    .item_id = order->item_id,
+    .quantity = order->quantity,
+    .price = order->price,
+  };
 
   // Now we should transfer funds, items and delete the order
   auto transaction_guard = db.begin_transaction();
@@ -369,7 +424,9 @@ tl::expected<void, std::string> Storage::execute_immediate_sell_order(UserId buy
       // Finally, delete the order
       .and_then([&]() { return db.execute("DELETE FROM sell_orders WHERE id = ?1;", sell_order_id); })
       // And of course, commit the transaction
-      .and_then([&]() { return transaction_guard->commit(); });
+      .and_then([&]() { return transaction_guard->commit(); })
+      // And return the execution info
+      .map([&]() { return order_execution_info; });
 }
 
 tl::expected<void, std::string> Storage::place_bid_on_auction_sell_order(UserId buyer_id, int sell_order_id, int bid) {
@@ -475,7 +532,7 @@ tl::expected<void, std::string> Storage::withdraw_inner(UserId user_id, int item
   return reduce_result;
 }
 
-std::optional<Storage::SellOrderInfo> Storage::get_sell_order_info(int sell_order_id) {
+std::optional<Storage::SellOrderInnerInfo> Storage::get_sell_order_info(int sell_order_id) {
   auto stmt = this->db.query(
       "SELECT"
       "  sell_orders.seller_id,"
@@ -499,7 +556,7 @@ std::optional<Storage::SellOrderInfo> Storage::get_sell_order_info(int sell_orde
     buyer_id = sqlite3_column_int(stmt->inner, 4);
   }
 
-  return Storage::SellOrderInfo{
+  return Storage::SellOrderInnerInfo{
     .seller_id = sqlite3_column_int(stmt->inner, 0),
     .item_id = sqlite3_column_int(stmt->inner, 1),
     .quantity = sqlite3_column_int(stmt->inner, 2),

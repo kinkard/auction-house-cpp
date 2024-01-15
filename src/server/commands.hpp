@@ -1,10 +1,10 @@
 #pragma once
 
-#include "storage.hpp"
+#include "shared_state.hpp"
 
 struct UserConnection {
   User user;
-  std::shared_ptr<Storage> storage;
+  std::shared_ptr<SharedState> shared_state;
 };
 
 namespace commands {

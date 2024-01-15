@@ -53,6 +53,7 @@ add_executable(server
   src/server/storage.cpp
   src/server/sqlite3.cpp
   src/server/commands.cpp
+  src/server/transaction_log.cpp
 )
 target_link_libraries(server asio sqlite3 fmt::fmt tl::expected)
 target_compile_options(server PRIVATE ${COMPILE_FLAGS})

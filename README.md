@@ -7,8 +7,10 @@ This is a code test project for [Senior Online Programmer (New Game IP)](https:/
 ```sh
 mkdir build && cd build
 cmake .. && cmake --build . -j 10
-./server 3000 db.sqlite
+./server 3000 db.sqlite transaction.log
 ```
+
+Transaction log can be monitored via `tail -f transaction.log`.
 
 ## Client
 

@@ -1,7 +1,9 @@
 #pragma once
 
 #include "sqlite3.hpp"
-#include "tl/expected.hpp"
+#include "transaction_log.hpp"
+
+#include <fmt/format.h>
 
 using UserId = int;
 
@@ -44,6 +46,24 @@ struct SellOrder {
   SellOrderType type;
 };
 
+struct SellOrderExecutionInfo {
+  UserId seller_id;
+  UserId buyer_id;
+  int item_id;
+  int quantity;
+  int price;
+
+  void save_to(TransactionLog & transaction_log) const {
+    transaction_log.log(seller_id, fmt::format("sold .item_id={} .quantity={} .price={}", item_id, quantity, price));
+    transaction_log.log(buyer_id, fmt::format("bought .item_id={} .quantity={} .price={}", item_id, quantity, price));
+  }
+};
+
+struct ItemOperationInfo {
+  int item_id;
+  int quantity;
+};
+
 class Storage final {
   Sqlite3 db;
   int funds_item_id;
@@ -65,10 +85,10 @@ public:
   tl::expected<User, std::string> get_or_create_user(std::string_view username);
 
   // Deposint item to the user. "funds" item is used to store the balance
-  tl::expected<void, std::string> deposit(UserId user_id, std::string_view item_name, int quantity);
+  tl::expected<ItemOperationInfo, std::string> deposit(UserId user_id, std::string_view item_name, int quantity);
 
   // Withdraws item from the user. "funds" item is used to store the balance
-  tl::expected<void, std::string> withdraw(UserId user_id, std::string_view item_name, int quantity);
+  tl::expected<ItemOperationInfo, std::string> withdraw(UserId user_id, std::string_view item_name, int quantity);
 
   // List all user items
   tl::expected<std::vector<std::pair<std::string, int>>, std::string> view_items(UserId user_id);
@@ -81,10 +101,10 @@ public:
   tl::expected<std::vector<SellOrder>, std::string> view_sell_orders();
 
   // Cancel expired sell orders
-  tl::expected<void, std::string> process_expired_sell_orders(int64_t unix_now);
+  tl::expected<std::vector<SellOrderExecutionInfo>, std::string> process_expired_sell_orders(int64_t unix_now);
 
   // Execute a buy order
-  tl::expected<void, std::string> execute_immediate_sell_order(UserId buyer_id, int sell_order_id);
+  tl::expected<SellOrderExecutionInfo, std::string> execute_immediate_sell_order(UserId buyer_id, int sell_order_id);
 
   // Place a bid on an auction sell order. The order will be executed when order expiration time is reached
   tl::expected<void, std::string> place_bid_on_auction_sell_order(UserId buyer_id, int sell_order_id, int bid);
@@ -98,7 +118,7 @@ private:
   tl::expected<void, std::string> withdraw_inner(UserId user_id, int item_id, int quantity);
 
   // Inner struct that represents a sell order
-  struct SellOrderInfo {
+  struct SellOrderInnerInfo {
     int seller_id;
     int item_id;
     int quantity;
@@ -107,5 +127,5 @@ private:
 
     SellOrderType type() const { return buyer_id == seller_id ? SellOrderType::Immediate : SellOrderType::Auction; }
   };
-  std::optional<SellOrderInfo> get_sell_order_info(int sell_order_id);
+  std::optional<SellOrderInnerInfo> get_sell_order_info(int sell_order_id);
 };
