@@ -55,8 +55,10 @@ struct SellOrderExecutionInfo {
   int price;
 
   void save_to(TransactionLog & transaction_log) const {
-    transaction_log.log(seller_id, fmt::format("sold .item_id={} .quantity={} .price={}", item_id, quantity, price));
-    transaction_log.log(buyer_id, fmt::format("bought .item_id={} .quantity={} .price={}", item_id, quantity, price));
+    transaction_log.log(
+        seller_id, fmt::format("sold .item_id={} .quantity={} .price={} .order_id={}", item_id, quantity, price, id));
+    transaction_log.log(
+        buyer_id, fmt::format("bought .item_id={} .quantity={} .price={} .order_id={}", item_id, quantity, price, id));
   }
 };
 
