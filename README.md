@@ -1,6 +1,6 @@
 # The Auction House
 
-This is a code test project for [Senior Online Programmer (New Game IP)](https://www.ubisoft.com/en-us/company/careers/search/743999932289413-senior-online-programmer-new-game-ip-) position at Ubisoft Stockholm.
+This is a code test project for [Senior Online Programmer (New Game IP)](https://www.ubisoft.com/en-us/company/careers/search/743999932289413-senior-online-programmer-new-game-ip-) position at Ubisoft Stockholm. See [Code Test - The Auction House](docs/Online%20Code%20Test%20-%20Auction%20House.pdf) for more details.
 
 ## Supported functionality
 
@@ -57,11 +57,11 @@ Usage: <command> [<args>], where `[]` annotates optional argumet(s)
 
 There are 5 external library used in this project
 
-- [asio](deps/asio/) - for asynchronous runtime and network
-- [sqlite3](deps/sqlite3/) - for state/storage. I've added my own C++ wrapper around it (see sqlite3.hpp/cpp) to reduce amount of boiler plate code. All queries live in storage.cpp and covered by tests in tests/storage_tests.cpp
-- [fmt::fmt](deps/fmt/) - for nice and shiny formatting that would work with VS2019
-- [tl::expected](deps/expected/) - C++11 compatible way to handle errors without throwing exceptions everywhere
-- [gtest](deps/goodletest/) - for core logic tests
+- [asio](https://github.com/chriskohlhoff/asio) - for asynchronous runtime and network
+- [sqlite3](deps/sqlite3/) (the amalgamation from <https://www.sqlite.org/download.html>) - for state/storage. I've added my own C++ wrapper around it (see sqlite3.hpp/cpp) to reduce amount of boiler plate code. All queries live in storage.cpp and covered by tests in tests/storage_tests.cpp
+- [fmt::fmt](https://github.com/fmtlib/fmt) - for nice and shiny formatting that would work with VS2019
+- [tl::expected](https://github.com/TartanLlama/expected) - C++11 compatible way to handle errors without throwing exceptions everywhere
+- [gtest](https://github.com/google/googletest) - for core logic tests
 
 ## VS2019 note
 
