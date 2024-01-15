@@ -297,16 +297,11 @@ tl::expected<std::vector<SellOrderExecutionInfo>, std::string> Storage::process_
     return tl::make_unexpected(fmt::format("Failed to start transaction: {}", transaction_guard.error()));
   }
 
-  // UserId seller_id;
-  // UserId buyer_id;
-  // int item_id;
-  // int quantity;
-  // int price;
-
   // get all executed auction orders
   auto executed_auction_orders =
       db.query(
             "SELECT "
+            "  id, "
             "  seller_id, "
             "  buyer_id, "
             "  item_id, "
@@ -320,11 +315,12 @@ tl::expected<std::vector<SellOrderExecutionInfo>, std::string> Storage::process_
             int rc;
             while ((rc = sqlite3_step(select.inner)) == SQLITE_ROW) {
               orders.emplace_back(SellOrderExecutionInfo{
-                  .seller_id = sqlite3_column_int(select.inner, 0),
-                  .buyer_id = sqlite3_column_int(select.inner, 1),
-                  .item_id = sqlite3_column_int(select.inner, 2),
-                  .quantity = sqlite3_column_int(select.inner, 3),
-                  .price = sqlite3_column_int(select.inner, 4),
+                  .id = sqlite3_column_int(select.inner, 0),
+                  .seller_id = sqlite3_column_int(select.inner, 1),
+                  .buyer_id = sqlite3_column_int(select.inner, 2),
+                  .item_id = sqlite3_column_int(select.inner, 3),
+                  .quantity = sqlite3_column_int(select.inner, 4),
+                  .price = sqlite3_column_int(select.inner, 5),
               });
             }
             if (rc != SQLITE_DONE) {
@@ -401,6 +397,7 @@ tl::expected<SellOrderExecutionInfo, std::string> Storage::execute_immediate_sel
   }
 
   auto order_execution_info = SellOrderExecutionInfo{
+    .id = sell_order_id,
     .seller_id = order->seller_id,
     .buyer_id = buyer_id,
     .item_id = order->item_id,

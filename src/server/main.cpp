@@ -23,16 +23,43 @@ using asio::use_awaitable;
 using asio::ip::tcp;
 
 awaitable<void> process_user_commands(tcp::socket socket, UserConnection connection) {
+  auto shared_socket = std::make_shared<tcp::socket>(std::move(socket));
+  connection.shared_state->sockets[connection.user.id] = shared_socket;
+
   char buffer[256];
   try {
     for (;;) {
-      std::size_t n = co_await socket.async_read_some(asio::buffer(buffer), use_awaitable);
+      std::size_t n = co_await shared_socket->async_read_some(asio::buffer(buffer), use_awaitable);
       auto response = process_request(connection, { buffer, n });
-      co_await async_write(socket, asio::buffer(response), use_awaitable);
+      co_await async_write(*shared_socket, asio::buffer(response), use_awaitable);
     }
   } catch (std::exception & e) {
     fmt::println("Connection with user {}, id={} was closed by client: {}", connection.user.username,
                  connection.user.id, e.what());
+    connection.shared_state->sockets.erase(connection.user.id);
+  }
+}
+
+awaitable<void> notify_users(std::shared_ptr<SharedState> shared_state) {
+  namespace ch = std::chrono;
+  auto timer = asio::steady_timer(co_await asio::this_coro::executor, std::chrono::seconds(1));
+
+  for (;;) {
+    co_await timer.async_wait(use_awaitable);
+    timer.expires_at(timer.expiry() + ch::seconds(1));
+
+    while (!shared_state->notifications.empty()) {
+      auto const & [user_id, message] = shared_state->notifications.front();
+      auto it = shared_state->sockets.find(user_id);
+      if (it != shared_state->sockets.end()) {
+        try {
+          co_await async_write(*it->second, asio::buffer(message), use_awaitable);
+        } catch (std::exception & e) {
+          // Just do nothing. User might have disconnected but we still have a socket
+        }
+      }
+      shared_state->notifications.pop();
+    }
   }
 }
 
@@ -51,6 +78,8 @@ awaitable<void> process_expired_sell_orders(std::shared_ptr<SharedState> shared_
     }
     for (auto const & order : *result) {
       order.save_to(shared_state->transaction_log);
+      shared_state->notifications.push(std::make_pair(
+          order.seller_id, fmt::format("Your sell order #{} was executed for {}", order.id, order.price)));
     }
   }
 }
@@ -136,7 +165,8 @@ int main(int argc, char * argv[]) {
     });
 
     co_spawn(io_context, listener(port, shared_state), detached);
-    co_spawn(io_context, process_expired_sell_orders(std::move(shared_state)), detached);
+    co_spawn(io_context, process_expired_sell_orders(shared_state), detached);
+    co_spawn(io_context, notify_users(std::move(shared_state)), detached);
 
     io_context.run();
   } catch (std::exception & e) {

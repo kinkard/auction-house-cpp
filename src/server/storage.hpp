@@ -47,6 +47,7 @@ struct SellOrder {
 };
 
 struct SellOrderExecutionInfo {
+  int id;
   UserId seller_id;
   UserId buyer_id;
   int item_id;

@@ -259,6 +259,10 @@ std::string buy(UserConnection & connection, std::string_view args) {
       return fmt::format("Failed to execute #{} sell order with error: {}", sell_order_id, result.error());
     }
     result->save_to(connection.shared_state->transaction_log);
+
+    connection.shared_state->notifications.push(std::make_pair(
+        result->seller_id, fmt::format("Your sell order #{} was executed for {}", result->id, result->price)));
+
     return fmt::format("Successfully executed #{} sell order", sell_order_id);
   }
 }
