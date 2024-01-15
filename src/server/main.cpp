@@ -52,8 +52,9 @@ awaitable<void> notify_users(std::shared_ptr<SharedState> shared_state) {
       auto const & [user_id, message] = shared_state->notifications.front();
       auto it = shared_state->sockets.find(user_id);
       if (it != shared_state->sockets.end()) {
+        auto const socket = it->second;  // prevent socket from being destroyed while we are writing to it
         try {
-          co_await async_write(*it->second, asio::buffer(message), use_awaitable);
+          co_await async_write(*socket, asio::buffer(message), use_awaitable);
         } catch (std::exception & e) {
           // Just do nothing. User might have disconnected but we still have a socket
         }
@@ -105,9 +106,8 @@ awaitable<void> process_client_login(tcp::socket socket, std::shared_ptr<SharedS
     fmt::println("User {}, id={} successfully logged in", user->username, user->id);
 
     // Spawn a new coroutine to handle the user
-    co_spawn(co_await asio::this_coro::executor,
-             process_user_commands(std::move(socket),
-                                   UserConnection{ .user = std::move(*user), .shared_state = std::move(state) }),
+    auto connection = UserConnection{ .user = std::move(user.value()), .shared_state = std::move(state) };
+    co_spawn(co_await asio::this_coro::executor, process_user_commands(std::move(socket), std::move(connection)),
              detached);
   } catch (std::exception & e) {
     fmt::println("Failed to process client login: {}", e.what());
@@ -151,8 +151,12 @@ int main(int argc, char * argv[]) {
     return 1;
   }
 
-  auto shared_state = std::make_shared<SharedState>(
-      SharedState{ .storage = std::move(*shared_storage), .transaction_log = std::move(*transaction_log) });
+  auto shared_state = std::make_shared<SharedState>(SharedState{
+      .storage = std::move(*shared_storage),
+      .transaction_log = std::move(*transaction_log),
+      .notifications = {},
+      .sockets = {},
+  });
 
   try {
     asio::io_context io_context(1);

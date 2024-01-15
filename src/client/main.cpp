@@ -7,6 +7,7 @@
 #include <asio/write.hpp>
 
 #include <iostream>
+#include <optional>
 #include <string_view>
 #include <thread>
 

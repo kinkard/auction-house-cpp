@@ -147,7 +147,7 @@ tl::expected<ItemOperationInfo, std::string> Storage::deposit(UserId user_id, st
 
   return get_item_id(item_name).and_then([&](int item_id) {
     return deposit_inner(user_id, item_id, quantity).map([&]() {
-      return ItemOperationInfo{ .item_id = item_id, quantity };
+      return ItemOperationInfo{ .item_id = item_id, .quantity = quantity };
     });
   });
 }
@@ -165,7 +165,7 @@ tl::expected<ItemOperationInfo, std::string> Storage::withdraw(UserId user_id, s
   return get_item_id(item_name)
       .and_then([&](int item_id) {
         return withdraw_inner(user_id, item_id, quantity).map([&]() {
-          return ItemOperationInfo{ .item_id = item_id, quantity };
+          return ItemOperationInfo{ .item_id = item_id, .quantity = quantity };
         });
       })
       .map_error([&](auto &&) { return fmt::format("Not enough {}(s) to withdraw", item_name); });

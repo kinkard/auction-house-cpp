@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.25.0 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.22.0 FATAL_ERROR)
 project(auction-house LANGUAGES CXX C)
 
 # Compiler configuration
@@ -14,38 +14,38 @@ add_subdirectory(deps/fmt)
 set(EXPECTED_BUILD_TESTS OFF)
 add_subdirectory(deps/expected)
 
-# Additional compiler flags
-include(CheckCXXCompilerFlag)
-
 # Clang warning documentation - https://clang.llvm.org/docs/DiagnosticsReference.html
 # GCC warning documentation - https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html
-# Flags that are applied for each platform
-set(COMPILE_FLAGS -Werror -Wall -Wextra -pedantic -pedantic-errors)
-# Flags that are applied only where they are supported
-set(EXTRA_COMPILE_FLAGS
-  -Wcast-align
-  -Wcast-qual
-  -Wcomma
-  -Wctor-dtor-privacy
-  -Wduplicated-cond
-  -Wextra-semi
-  -Wfloat-equal
-  -Wlogical-op
-  -Wnewline-eof
-  -Wno-dangling-else
-  -Wnon-virtual-dtor
-  -Woverloaded-virtual
-  -Wredundant-decls
-  -Wsuggest-override
-  -Wunreachable-code
-  -Wconversion
-)
-foreach(extra_flag ${EXTRA_COMPILE_FLAGS})
-  check_cxx_compiler_flag(${extra_flag} HAS_FLAG_${extra_flag})
-  if(HAS_FLAG_${extra_flag})
-      set(COMPILE_FLAGS ${COMPILE_FLAGS} ${extra_flag})
-  endif()
-endforeach()
+# Visual Studio warning documentation - https://learn.microsoft.com/en-us/cpp/build/reference/compiler-option-warning-level
+if(MSVC)
+  set(COMPILE_FLAGS /WX /Wall)
+else()
+  include(CheckCXXCompilerFlag)
+  set(COMPILE_FLAGS -Werror -Wall -Wextra -pedantic -pedantic-errors)
+  set(EXTRA_COMPILE_FLAGS
+    -Wcast-align
+    -Wcast-qual
+    -Wcomma
+    -Wduplicated-cond
+    -Wextra-semi
+    -Wfloat-equal
+    -Wlogical-op
+    -Wnewline-eof
+    -Wno-dangling-else
+    -Wnon-virtual-dtor
+    -Woverloaded-virtual
+    -Wredundant-decls
+    -Wsuggest-override
+    -Wunreachable-code
+    -Wconversion
+  )
+  foreach(extra_flag ${EXTRA_COMPILE_FLAGS})
+    check_cxx_compiler_flag(${extra_flag} HAS_FLAG_${extra_flag})
+    if(HAS_FLAG_${extra_flag})
+        set(COMPILE_FLAGS ${COMPILE_FLAGS} ${extra_flag})
+    endif()
+  endforeach()
+endif()
 
 # Server
 add_executable(server 
