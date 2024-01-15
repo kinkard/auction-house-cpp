@@ -14,13 +14,23 @@ add_subdirectory(deps/fmt)
 set(EXPECTED_BUILD_TESTS OFF)
 add_subdirectory(deps/expected)
 
-# Clang warning documentation - https://clang.llvm.org/docs/DiagnosticsReference.html
-# GCC warning documentation - https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html
-# Visual Studio warning documentation - https://learn.microsoft.com/en-us/cpp/build/reference/compiler-option-warning-level
 if(MSVC)
-  set(COMPILE_FLAGS /WX /Wall)
+  # Visual Studio warning documentation - https://learn.microsoft.com/en-us/cpp/build/reference/compiler-option-warning-level
+  set(COMPILE_FLAGS
+    # treat all warnings as errors
+    /WX
+	# increase warning level to reasonable one
+	/W3 
+	# silence MSVC warning about `fopen()` as unfortunately, suggested fopen_s() is not portable
+	-D_CRT_SECURE_NO_WARNINGS
+	# Set win10 as a target. See more in https://learn.microsoft.com/en-us/cpp/porting/modifying-winver-and-win32-winnt
+	-D_WIN32_WINNT=0x0A00
+  )
 else()
   include(CheckCXXCompilerFlag)
+
+  # Clang warning documentation - https://clang.llvm.org/docs/DiagnosticsReference.html
+  # GCC warning documentation - https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html
   set(COMPILE_FLAGS -Werror -Wall -Wextra -pedantic -pedantic-errors)
   set(EXTRA_COMPILE_FLAGS
     -Wcast-align

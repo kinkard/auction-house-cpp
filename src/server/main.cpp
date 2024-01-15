@@ -55,7 +55,7 @@ awaitable<void> notify_users(std::shared_ptr<SharedState> shared_state) {
         auto const socket = it->second;  // prevent socket from being destroyed while we are writing to it
         try {
           co_await async_write(*socket, asio::buffer(message), use_awaitable);
-        } catch (std::exception & e) {
+        } catch (std::exception &) {
           // Just do nothing. User might have disconnected but we still have a socket
         }
       }

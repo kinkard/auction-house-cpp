@@ -109,7 +109,7 @@ struct formatter<SellOrderType> {
 
   template <typename FormatContext>
   auto format(const SellOrderType & order_type, FormatContext & ctx) const {
-    return format_to(ctx.out(), "{}", to_string(order_type));
+    return ::fmt::format_to(ctx.out(), "{}", to_string(order_type));
   }
 };
 
@@ -125,10 +125,12 @@ struct formatter<SellOrder> {
     std::string_view const order_type_str = order.type == SellOrderType::Auction ? "on auction " : "";
 
     if (order.quantity == 1) {
-      return format_to(ctx.out(), "#{}: {} is selling a {} for {} funds {}until {}", order.id, order.seller_name,
+      return ::fmt::format_to(ctx.out(), "#{}: {} is selling a {} for {} funds {}until {}", order.id,
+                                   order.seller_name,
                        order.item_name, order.price, order_type_str, order.expiration_time);
     } else {
-      return format_to(ctx.out(), "#{}: {} is selling {} {}(s) for {} funds {}until {}", order.id, order.seller_name,
+      return ::fmt::format_to(ctx.out(), "#{}: {} is selling {} {}(s) for {} funds {}until {}", order.id,
+                              order.seller_name,
                        order.quantity, order.item_name, order.price, order_type_str, order.expiration_time);
     }
   }
