@@ -64,7 +64,7 @@ tl::expected<Storage, std::string> Storage::open(const char * path) {
 
   result = db->execute(
       "CREATE TABLE IF NOT EXISTS sell_orders ("
-      "id INTEGER PRIMARY KEY,"
+      "id INTEGER PRIMARY KEY AUTOINCREMENT,"
       "seller_id INTEGER NOT NULL,"
       "item_id INTEGER NOT NULL,"
       "quantity INTEGER NOT NULL CHECK(quantity > 0),"
@@ -193,9 +193,9 @@ tl::expected<std::vector<std::pair<std::string, int>>, std::string> Storage::vie
       });
 }
 
-tl::expected<void, std::string> Storage::place_sell_order(SellOrderType order_type, UserId seller_id,
-                                                          std::string_view item_name, int quantity, int price,
-                                                          int64_t unix_expiration_time) {
+tl::expected<ItemOperationInfo, std::string> Storage::place_sell_order(SellOrderType order_type, UserId seller_id,
+                                                                       std::string_view item_name, int quantity,
+                                                                       int price, int64_t unix_expiration_time) {
   if (quantity < 0) {
     return tl::make_unexpected("Cannot sell negative amount");
   }
@@ -215,6 +215,9 @@ tl::expected<void, std::string> Storage::place_sell_order(SellOrderType order_ty
     buyer_id = seller_id;
   }
 
+  // Fee is 5% of the price + 1 fixed fee
+  int const fee = price / 20 + 1;
+
   auto transaction_guard = db.begin_transaction();
   if (!transaction_guard) {
     return tl::make_unexpected(fmt::format("Failed to start transaction: {}", transaction_guard.error()));
@@ -228,8 +231,6 @@ tl::expected<void, std::string> Storage::place_sell_order(SellOrderType order_ty
 
       // Then we want to take a fee from the seller
       .and_then([&](int item_id) {
-        // Fee is 5% of the price + 1 fixed fee
-        int const fee = price / 20 + 1;
         return withdraw_inner(seller_id, funds_item_id, fee).map([&]() { return item_id; }).map_error([&](auto &&) {
           return fmt::format("Not enough funds to pay {} fee (which is 5% + 1)", item_name, fee);
         });
@@ -242,7 +243,8 @@ tl::expected<void, std::string> Storage::place_sell_order(SellOrderType order_ty
             "VALUES (?1, ?2, ?3, ?4, ?5, ?6);",
             seller_id, item_id, quantity, price, unix_expiration_time, buyer_id);
       })
-      .and_then([&]() { return transaction_guard->commit(); });
+      .and_then([&]() { return transaction_guard->commit(); })
+      .map([&]() { return ItemOperationInfo{ .item_id = funds_item_id, .quantity = fee }; });
 }
 
 tl::expected<std::vector<SellOrder>, std::string> Storage::view_sell_orders() {

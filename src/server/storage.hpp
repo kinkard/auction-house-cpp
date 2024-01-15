@@ -97,8 +97,9 @@ public:
   tl::expected<std::vector<std::pair<std::string, int>>, std::string> view_items(UserId user_id);
 
   // Place a sell order
-  tl::expected<void, std::string> place_sell_order(SellOrderType order_type, UserId user_id, std::string_view item_name,
-                                                   int quantity, int price, int64_t unix_expiration_time);
+  tl::expected<ItemOperationInfo, std::string> place_sell_order(SellOrderType order_type, UserId user_id,
+                                                                std::string_view item_name, int quantity, int price,
+                                                                int64_t unix_expiration_time);
 
   // View all sell orders
   tl::expected<std::vector<SellOrder>, std::string> view_sell_orders();

@@ -223,6 +223,8 @@ std::string sell(UserConnection & connection, std::string_view args) {
     return fmt::format("Failed to place {} sell order for {} {}(s) with error: {}", order_type, quantity, item_name,
                        result.error());
   }
+  connection.shared_state->transaction_log.log(
+      connection.user.id, fmt::format("payed fee .item_id={} .quantity={}", result->item_id, quantity));
   return fmt::format("Successfully placed {} sell order for {} {}(s)", order_type, quantity, item_name);
 }
 
