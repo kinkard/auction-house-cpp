@@ -129,7 +129,7 @@ struct formatter<SellOrder> {
                        order.item_name, order.price, order_type_str, order.expiration_time);
     } else {
       return format_to(ctx.out(), "#{}: {} is selling {} {}(s) for {} funds {}until {}", order.id, order.seller_name,
-                       order.quantity, order.item_name, order_type_str, order.price, order.expiration_time);
+                       order.quantity, order.item_name, order.price, order_type_str, order.expiration_time);
     }
   }
 };
