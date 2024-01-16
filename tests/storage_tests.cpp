@@ -14,13 +14,10 @@ std::string_view constexpr expiration_time_str = "2021-01-01 00:00";
 class StorageTest : public ::testing::Test {
 protected:
   void SetUp() override {
-    std::remove("test.db");
-    auto storage = Storage::open("test.db");
+    auto storage = Storage::open(":memory:");
     ASSERT_TRUE(storage) << storage.error();
     this->storage = std::make_unique<Storage>(std::move(storage.value()));
   }
-
-  void TearDown() override { std::remove("test.db"); }
 
   std::unique_ptr<Storage> storage;
 };
