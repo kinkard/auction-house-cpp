@@ -113,6 +113,9 @@ public:
     return stmt;
   }
 
+  // Returns the last inserted row id. Suitable to get the id after INSERT query
+  int last_insert_rowid() const;
+
   // RAII wrapper for transaction
   class TransactionGuard final {
     Sqlite3 & db;

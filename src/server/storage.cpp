@@ -139,17 +139,16 @@ tl::expected<ItemOperationInfo, std::string> Storage::deposit(UserId user_id, st
     return tl::make_unexpected(fmt::format("No such user with id={}", user_id));
   }
 
-  // We do INSERT OR IGNORE to make sure that the item exists
-  auto item_inserted = this->db.execute("INSERT OR IGNORE INTO items (name) VALUES (?1);", item_name);
-  if (!item_inserted) {
-    return tl::make_unexpected(item_inserted.error());
-  }
-
-  return get_item_id(item_name).and_then([&](int item_id) {
-    return deposit_inner(user_id, item_id, quantity).map([&]() {
-      return ItemOperationInfo{ .item_id = item_id, .quantity = quantity };
-    });
-  });
+  return get_item_id(item_name)
+      .or_else([&](auto &&) -> tl::expected<int, std::string> {
+        return this->db.execute("INSERT INTO items (name) VALUES (?1);", item_name)
+            .and_then([&]() -> tl::expected<int, std::string> { return this->db.last_insert_rowid(); });
+      })
+      .and_then([&](int item_id) {
+        return deposit_inner(user_id, item_id, quantity).map([&]() {
+          return ItemOperationInfo{ .item_id = item_id, .quantity = quantity };
+        });
+      });
 }
 
 tl::expected<ItemOperationInfo, std::string> Storage::withdraw(UserId user_id, std::string_view item_name,

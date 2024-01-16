@@ -38,6 +38,11 @@ tl::expected<Sqlite3::Statement, std::string> Sqlite3::prepare(std::string_view 
   return Statement(stmt);
 }
 
+int Sqlite3::last_insert_rowid() const {
+  // todo: use int64_t for all ids
+  return static_cast<int>(sqlite3_last_insert_rowid(this->db));
+}
+
 Sqlite3::Statement::~Statement() {
   sqlite3_finalize(this->inner);
 }
