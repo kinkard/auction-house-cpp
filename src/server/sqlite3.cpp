@@ -10,6 +10,8 @@ Sqlite3::~Sqlite3() {
 }
 
 tl::expected<Sqlite3, std::string> Sqlite3::open(char const * path) {
+  sqlite3_initialize();
+
   sqlite3 * db;
   int rc = sqlite3_open(path, &db);
   if (rc != SQLITE_OK) {
