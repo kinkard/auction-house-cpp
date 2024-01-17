@@ -9,39 +9,32 @@
 #include <optional>
 #include <string>
 
-namespace {
-struct UserCommand {
-  // Stores a pointer to a function that takes UserConnection and args and returns a string
-  std::string (*invoke)(UserConnection &, std::string_view);
-
-  std::string_view description;
-};
-
-static std::unordered_map<std::string_view, UserCommand> const kAllCommands = {
-  { "ping", { commands::ping, { "Replies 'pong'" } } },
-  { "whoami", { commands::whoami, { "Displays the username of the current user" } } },
-  { "help", { commands::help, { "Prints this help message about all available commands" } } },
+std::unordered_map<std::string_view, CommandsProcessor::UserCommand> const CommandsProcessor::commands = {
+  { "ping", { &CommandsProcessor::ping, { "Replies 'pong'" } } },
+  { "whoami", { &CommandsProcessor::whoami, { "Displays the username of the current user" } } },
+  { "help", { &CommandsProcessor::help, { "Prints this help message about all available commands" } } },
 
   { "deposit",
-    { commands::deposit,
+    { &CommandsProcessor::deposit,
       { "Deposits a specified amount into the user's account. Format: 'deposit <item name> [<quantity>]'" } } },
   { "withdraw",
-    { commands::withdraw,
+    { &CommandsProcessor::withdraw,
       { "Withdraws a specified amount from the user's account. Format: 'withdraw <item name> [<quantity>]'" } } },
-  { "view_items", { commands::view_items, { "Displays a list items for the current user" } } },
+  { "view_items", { &CommandsProcessor::view_items, { "Displays a list items for the current user" } } },
 
   { "sell",
-    { commands::sell,
+    { &CommandsProcessor::sell,
       { "Places an item for sale at a specified price. Format: 'sell [immediate|auction] <item_name> [<quantity>] "
         "<price>'" } } },
   { "buy",
-    { commands::buy,
+    { &CommandsProcessor::buy,
       { "Executes immediate sell order or places a bid on a auction sell order. Format: 'buy <sell_order_id> "
         "[<bid>]'" } } },
   { "view_sell_orders",
-    { commands::view_sell_orders, { "Displays a list of all current sell orders from all users" } } },
+    { &CommandsProcessor::view_sell_orders, { "Displays a list of all current sell orders from all users" } } },
 };
 
+namespace {
 // Parses the last word as a quantity and if failed - uses the whole string as an item name
 // Examples:
 // - "arrow 5" -> {"arrow", 5}
@@ -137,52 +130,50 @@ struct formatter<SellOrder> {
 };
 }  // namespace fmt
 
-namespace commands {
-
-std::string ping(UserConnection &, std::string_view) {
+std::string CommandsProcessor::ping(std::string_view) {
   return "pong";
 }
 
-std::string whoami(UserConnection & connection, std::string_view) {
-  return fmt::format("{}", connection.user.username);
+std::string CommandsProcessor::whoami(std::string_view) {
+  return fmt::format("{}", user.username);
 }
 
-std::string help(UserConnection &, std::string_view) {
+std::string CommandsProcessor::help(std::string_view) {
   std::string output = "Available commands:\n";
-  for (auto const & [command_name, command] : kAllCommands) {
+  for (auto const & [command_name, command] : commands) {
     output += fmt::format("- {} - {}\n", command_name, command.description);
   }
   output += fmt::format("Usage: <command> [<args>], where `[]` annotates optional argumet(s)\n");
   return output;
 }
 
-std::string deposit(UserConnection & connection, std::string_view args) {
+std::string CommandsProcessor::deposit(std::string_view args) {
   auto const [item_name, quantity] = parse_item_name_and_count(args);
 
-  auto result = connection.shared_state->storage.deposit(connection.user.id, item_name, quantity);
+  auto result = shared_state->storage.deposit(user.id, item_name, quantity);
   if (!result) {
     return fmt::format("Failed to deposit {} {}(s) with error: {}", quantity, item_name, result.error());
   }
 
-  connection.shared_state->transaction_log.log(
-      connection.user.id, fmt::format("deposited .item_id={} .quantity={}", result->item_id, quantity));
+  shared_state->transaction_log.log(user.id,
+                                    fmt::format("deposited .item_id={} .quantity={}", result->item_id, quantity));
   return fmt::format("Successfully deposited {} {}(s)", quantity, item_name);
 }
 
-std::string withdraw(UserConnection & connection, std::string_view args) {
+std::string CommandsProcessor::withdraw(std::string_view args) {
   auto const [item_name, quantity] = parse_item_name_and_count(args);
 
-  auto result = connection.shared_state->storage.withdraw(connection.user.id, item_name, quantity);
+  auto result = shared_state->storage.withdraw(user.id, item_name, quantity);
   if (!result) {
     return fmt::format("Failed to withdraw {} {}(s) with error: {}", quantity, item_name, result.error());
   }
-  connection.shared_state->transaction_log.log(
-      connection.user.id, fmt::format("withdrawn .item_id={} .quantity={}", result->item_id, quantity));
+  shared_state->transaction_log.log(user.id,
+                                    fmt::format("withdrawn .item_id={} .quantity={}", result->item_id, quantity));
   return fmt::format("Successfully withdrawn {} {}(s)", quantity, item_name);
 }
 
-std::string view_items(UserConnection & connection, std::string_view) {
-  auto result = connection.shared_state->storage.view_items(connection.user.id);
+std::string CommandsProcessor::view_items(std::string_view) {
+  auto result = shared_state->storage.view_items(user.id);
   if (!result) {
     return fmt::format("Failed to view items with error: {}", result.error());
   }
@@ -197,7 +188,7 @@ std::string view_items(UserConnection & connection, std::string_view) {
 // - "arrow 10" -> {"arrow", .quantity=1, .price=10, .type=Immediate}
 // - "immidiate arrow 10 5" -> {"arrow", .quantity=10, .price=5, .type=Immediate}
 // - "auction arrow 10 5" -> {"arrow", .quantity=10, .price=5, .type=Auction}
-std::string sell(UserConnection & connection, std::string_view args) {
+std::string CommandsProcessor::sell(std::string_view args) {
   // parse optional order type, if none - use immediate
   SellOrderType order_type = SellOrderType::Immediate;
   std::size_t const space_pos = args.find(' ');
@@ -219,18 +210,18 @@ std::string sell(UserConnection & connection, std::string_view args) {
   constexpr auto const order_lifetime = std::chrono::minutes(5);
   int64_t const unix_expiration_time = (std::chrono::seconds(std::time(NULL)) + order_lifetime).count();
 
-  auto result = connection.shared_state->storage.place_sell_order(order_type, connection.user.id, item_name, quantity,
-                                                                  price, unix_expiration_time);
+  auto result =
+      shared_state->storage.place_sell_order(order_type, user.id, item_name, quantity, price, unix_expiration_time);
   if (!result) {
     return fmt::format("Failed to place {} sell order for {} {}(s) with error: {}", order_type, quantity, item_name,
                        result.error());
   }
-  connection.shared_state->transaction_log.log(
-      connection.user.id, fmt::format("payed fee .item_id={} .quantity={}", result->item_id, quantity));
+  shared_state->transaction_log.log(user.id,
+                                    fmt::format("payed fee .item_id={} .quantity={}", result->item_id, quantity));
   return fmt::format("Successfully placed {} sell order for {} {}(s)", order_type, quantity, item_name);
 }
 
-std::string buy(UserConnection & connection, std::string_view args) {
+std::string CommandsProcessor::buy(std::string_view args) {
   std::optional<int> bid;
   std::size_t const space_pos = args.find(' ');
   if (space_pos != std::string_view::npos) {
@@ -250,29 +241,28 @@ std::string buy(UserConnection & connection, std::string_view args) {
   }
 
   if (bid) {
-    auto result =
-        connection.shared_state->storage.place_bid_on_auction_sell_order(connection.user.id, sell_order_id, *bid);
+    auto result = shared_state->storage.place_bid_on_auction_sell_order(user.id, sell_order_id, *bid);
     if (!result) {
       return fmt::format("Failed to place a bid on #{} auction sell order with error: {}", sell_order_id,
                          result.error());
     }
     return fmt::format("Successfully placed a bid on #{} auction sell order", sell_order_id);
   } else {
-    auto result = connection.shared_state->storage.execute_immediate_sell_order(connection.user.id, sell_order_id);
+    auto result = shared_state->storage.execute_immediate_sell_order(user.id, sell_order_id);
     if (!result) {
       return fmt::format("Failed to execute #{} sell order with error: {}", sell_order_id, result.error());
     }
-    result->save_to(connection.shared_state->transaction_log);
+    result->save_to(shared_state->transaction_log);
 
-    connection.shared_state->notifications.push(std::make_pair(
+    shared_state->notifications.push(std::make_pair(
         result->seller_id, fmt::format("Your sell order #{} was executed for {}", result->id, result->price)));
 
     return fmt::format("Successfully executed #{} sell order", sell_order_id);
   }
 }
 
-std::string view_sell_orders(UserConnection & connection, std::string_view) {
-  auto result = connection.shared_state->storage.view_sell_orders();
+std::string CommandsProcessor::view_sell_orders(std::string_view) {
+  auto result = shared_state->storage.view_sell_orders();
   if (!result) {
     return fmt::format("Failed to view sell orders with error: {}", result.error());
   }
@@ -282,13 +272,12 @@ std::string view_sell_orders(UserConnection & connection, std::string_view) {
   }
   return output;
 }
-}  // namespace commands
 
-std::string process_request(UserConnection & connection, std::string_view request) {
+std::string CommandsProcessor::process_request(std::string_view request) {
   auto [command, args] = parse_command(request);
-  if (auto const it = kAllCommands.find(command); it != kAllCommands.end()) {
-    return it->second.invoke(connection, args);
+  if (auto const it = commands.find(command); it != commands.end()) {
+    return std::invoke(it->second.invoke, this, args);
   }
-  auto help_str = commands::help(connection, {});
+  auto help_str = help({});
   return fmt::format("Failed to execute unknown command '{}'. {}", command, help_str);
 }

@@ -22,21 +22,21 @@ using asio::detached;
 using asio::use_awaitable;
 using asio::ip::tcp;
 
-awaitable<void> process_user_commands(tcp::socket socket, UserConnection connection) {
+awaitable<void> process_user_commands(tcp::socket socket, CommandsProcessor processor) {
   auto shared_socket = std::make_shared<tcp::socket>(std::move(socket));
-  connection.shared_state->sockets[connection.user.id] = shared_socket;
+  processor.shared_state->sockets[processor.user.id] = shared_socket;
 
   char buffer[256];
   try {
     for (;;) {
       std::size_t n = co_await shared_socket->async_read_some(asio::buffer(buffer), use_awaitable);
-      auto response = process_request(connection, { buffer, n });
+      auto response = processor.process_request({ buffer, n });
       co_await async_write(*shared_socket, asio::buffer(response), use_awaitable);
     }
   } catch (std::exception & e) {
-    fmt::println("Connection with user {}, id={} was closed by client: {}", connection.user.username,
-                 connection.user.id, e.what());
-    connection.shared_state->sockets.erase(connection.user.id);
+    fmt::println("Connection with user {}, id={} was closed by client: {}", processor.user.username, processor.user.id,
+                 e.what());
+    processor.shared_state->sockets.erase(processor.user.id);
   }
 }
 
@@ -106,8 +106,8 @@ awaitable<void> process_client_login(tcp::socket socket, std::shared_ptr<SharedS
     fmt::println("User {}, id={} successfully logged in", user->username, user->id);
 
     // Spawn a new coroutine to handle the user
-    auto connection = UserConnection{ .user = std::move(user.value()), .shared_state = std::move(state) };
-    co_spawn(co_await asio::this_coro::executor, process_user_commands(std::move(socket), std::move(connection)),
+    CommandsProcessor processor(std::move(*user), std::move(state));
+    co_spawn(co_await asio::this_coro::executor, process_user_commands(std::move(socket), std::move(processor)),
              detached);
   } catch (std::exception & e) {
     fmt::println("Failed to process client login: {}", e.what());
