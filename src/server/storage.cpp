@@ -135,10 +135,6 @@ tl::expected<ItemOperationInfo, std::string> Storage::deposit(UserId user_id, st
     return tl::make_unexpected("Cannot deposit negative amount");
   }
 
-  if (!this->is_valid_user(user_id)) {
-    return tl::make_unexpected(fmt::format("No such user with id={}", user_id));
-  }
-
   return get_item_id(item_name)
       .or_else([&](auto &&) -> tl::expected<int, std::string> {
         return this->db.execute("INSERT INTO items (name) VALUES (?1);", item_name)
@@ -155,10 +151,6 @@ tl::expected<ItemOperationInfo, std::string> Storage::withdraw(UserId user_id, s
                                                                int quantity) {
   if (quantity < 0) {
     return tl::make_unexpected("Cannot withdraw negative amount");
-  }
-
-  if (!this->is_valid_user(user_id)) {
-    return tl::make_unexpected(fmt::format("No such user with id={}", user_id));
   }
 
   return get_item_id(item_name)
@@ -382,10 +374,6 @@ tl::expected<std::vector<SellOrderExecutionInfo>, std::string> Storage::process_
 
 tl::expected<SellOrderExecutionInfo, std::string> Storage::execute_immediate_sell_order(UserId buyer_id,
                                                                                         int sell_order_id) {
-  if (!this->is_valid_user(buyer_id)) {
-    return tl::make_unexpected(fmt::format("No such user with id={}", buyer_id));
-  }
-
   auto order = get_sell_order_info(sell_order_id);
   if (!order) {
     return tl::make_unexpected(fmt::format("Immediate sell order #{} doesn't exist", sell_order_id));
@@ -428,10 +416,6 @@ tl::expected<SellOrderExecutionInfo, std::string> Storage::execute_immediate_sel
 }
 
 tl::expected<void, std::string> Storage::place_bid_on_auction_sell_order(UserId buyer_id, int sell_order_id, int bid) {
-  if (!this->is_valid_user(buyer_id)) {
-    return tl::make_unexpected(fmt::format("No such user with id={}", buyer_id));
-  }
-
   auto order = get_sell_order_info(sell_order_id);
   if (!order) {
     return tl::make_unexpected(fmt::format("Sell order #{} doesn't exist", sell_order_id));
@@ -470,18 +454,6 @@ tl::expected<void, std::string> Storage::place_bid_on_auction_sell_order(UserId 
       })
       // And of course, commit the transaction
       .and_then([&]() { return transaction_guard->commit(); });
-}
-
-bool Storage::is_valid_user(UserId user_id) {
-  return this->db.query("SELECT id FROM users WHERE id = ?1;", user_id)
-      .and_then([](auto select) -> tl::expected<void, std::string> {
-        int rc = sqlite3_step(select.inner);
-        if (rc != SQLITE_ROW) {
-          return tl::make_unexpected(fmt::format("Failed to execute SQL statement: {}", sqlite3_errstr(rc)));
-        }
-        return {};
-      })
-      .has_value();
 }
 
 tl::expected<int, std::string> Storage::get_item_id(std::string_view item_name) {

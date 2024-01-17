@@ -114,7 +114,6 @@ public:
   tl::expected<void, std::string> place_bid_on_auction_sell_order(UserId buyer_id, int sell_order_id, int bid);
 
 private:
-  bool is_valid_user(UserId user_id);
   tl::expected<int, std::string> get_item_id(std::string_view item_name);
   std::optional<int> get_items_quantity(UserId user_id, int item_id);
 
