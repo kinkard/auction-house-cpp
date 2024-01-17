@@ -186,7 +186,7 @@ std::string view_items(UserConnection & connection, std::string_view) {
   if (!result) {
     return fmt::format("Failed to view items with error: {}", result.error());
   }
-  return fmt::format("Items: {}", fmt::join(result.value(), ", "));
+  return fmt::format("Items: [{}]", fmt::join(result.value(), ", "));
 }
 
 // args should be in the format "[immediate|auction] <item_name> [quantity] <price>".
