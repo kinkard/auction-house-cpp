@@ -242,7 +242,7 @@ tl::expected<ItemOperationInfo, std::string> Storage::place_sell_order(SellOrder
       // Then we want to take a fee from the seller
       .and_then([&](int item_id) {
         return withdraw_inner(seller_id, funds_item_id, fee).map([&]() { return item_id; }).map_error([&](auto &&) {
-          return fmt::format("Not enough funds to pay {} fee (which is 5% + 1)", item_name, fee);
+          return fmt::format("Not enough funds to pay {} funds fee (which is 5% + 1)", fee);
         });
       })
 
