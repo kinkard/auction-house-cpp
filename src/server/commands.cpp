@@ -151,8 +151,7 @@ std::string CommandsProcessor::deposit(std::string_view args) {
     return fmt::format("Failed to deposit {} {}(s) with error: {}", quantity, item_name, result.error());
   }
 
-  shared_state->transaction_log.log(user.id,
-                                    fmt::format("deposited .item_id={} .quantity={}", result->item_id, quantity));
+  result->save_to(user.id, "deposited", shared_state->transaction_log);
   return fmt::format("Successfully deposited {} {}(s)", quantity, item_name);
 }
 
@@ -163,8 +162,8 @@ std::string CommandsProcessor::withdraw(std::string_view args) {
   if (!result) {
     return fmt::format("Failed to withdraw {} {}(s) with error: {}", quantity, item_name, result.error());
   }
-  shared_state->transaction_log.log(user.id,
-                                    fmt::format("withdrawn .item_id={} .quantity={}", result->item_id, quantity));
+
+  result->save_to(user.id, "withdrawn", shared_state->transaction_log);
   return fmt::format("Successfully withdrawn {} {}(s)", quantity, item_name);
 }
 
@@ -212,8 +211,8 @@ std::string CommandsProcessor::sell(std::string_view args) {
     return fmt::format("Failed to place {} sell order for {} {}(s) with error: {}", order_type, quantity, item_name,
                        result.error());
   }
-  shared_state->transaction_log.log(user.id,
-                                    fmt::format("payed fee .item_id={} .quantity={}", result->item_id, quantity));
+
+  result->save_to(user.id, "payed fee", shared_state->transaction_log);
   return fmt::format("Successfully placed {} sell order for {} {}(s)", order_type, quantity, item_name);
 }
 

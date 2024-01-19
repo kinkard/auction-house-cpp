@@ -67,6 +67,10 @@ struct SellOrderExecutionInfo {
 struct ItemOperationInfo {
   int item_id;
   int quantity;
+
+  void save_to(UserId user_id, std::string_view operation, TransactionLog & transaction_log) const {
+    transaction_log.log(user_id, fmt::format("{} .item_id={} .quantity={}", operation, item_id, quantity));
+  }
 };
 
 // Wrapper around sqlite3 database with core business logic
