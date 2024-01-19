@@ -46,6 +46,7 @@ struct SellOrder {
   SellOrderType type;
 };
 
+// Internal struct that represents a sell order close to how it is stored in the database
 struct SellOrderExecutionInfo {
   int id;
   UserId seller_id;
@@ -62,11 +63,13 @@ struct SellOrderExecutionInfo {
   }
 };
 
+// A record for a transaction log
 struct ItemOperationInfo {
   int item_id;
   int quantity;
 };
 
+// Wrapper around sqlite3 database with core business logic
 class Storage final {
   Sqlite3 db;
   int funds_item_id;
@@ -115,6 +118,7 @@ public:
 
 private:
   tl::expected<int, std::string> get_item_id(std::string_view item_name);
+  // Returns the quantity of the item for the user. std::nullopt can be treated as 0
   std::optional<int> get_items_quantity(UserId user_id, int item_id);
 
   tl::expected<void, std::string> deposit_inner(UserId user_id, int item_id, int quantity);

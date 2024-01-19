@@ -9,29 +9,16 @@
 #include <optional>
 #include <string>
 
-std::unordered_map<std::string_view, CommandsProcessor::UserCommand> const CommandsProcessor::commands = {
-  { "ping", { &CommandsProcessor::ping, { "Replies 'pong'" } } },
-  { "whoami", { &CommandsProcessor::whoami, { "Displays the username of the current user" } } },
-  { "help", { &CommandsProcessor::help, { "Prints this help message about all available commands" } } },
-
-  { "deposit",
-    { &CommandsProcessor::deposit,
-      { "Deposits a specified amount into the user's account. Format: 'deposit <item name> [<quantity>]'" } } },
-  { "withdraw",
-    { &CommandsProcessor::withdraw,
-      { "Withdraws a specified amount from the user's account. Format: 'withdraw <item name> [<quantity>]'" } } },
-  { "view_items", { &CommandsProcessor::view_items, { "Displays a list items for the current user" } } },
-
-  { "sell",
-    { &CommandsProcessor::sell,
-      { "Places an item for sale at a specified price. Format: 'sell [immediate|auction] <item_name> [<quantity>] "
-        "<price>'" } } },
-  { "buy",
-    { &CommandsProcessor::buy,
-      { "Executes immediate sell order or places a bid on a auction sell order. Format: 'buy <sell_order_id> "
-        "[<bid>]'" } } },
-  { "view_sell_orders",
-    { &CommandsProcessor::view_sell_orders, { "Displays a list of all current sell orders from all users" } } },
+std::unordered_map<std::string_view, CommandsProcessor::CommandHandlerType> const CommandsProcessor::commands = {
+  { "ping", &CommandsProcessor::ping },
+  { "whoami", &CommandsProcessor::whoami },
+  { "help", &CommandsProcessor::help },
+  { "deposit", &CommandsProcessor::deposit },
+  { "withdraw", &CommandsProcessor::withdraw },
+  { "view_items", &CommandsProcessor::view_items },
+  { "sell", &CommandsProcessor::sell },
+  { "buy", &CommandsProcessor::buy },
+  { "view_sell_orders", &CommandsProcessor::view_sell_orders },
 };
 
 namespace {
@@ -54,6 +41,7 @@ std::pair<std::string_view, int> parse_item_name_and_count(std::string_view args
   return { args, quantity };
 }
 
+// Parses '<item_name> [<quantity>] <price>' where quantity is optional and defaults to 1
 std::optional<std::tuple<std::string_view, int, int>> parse_sell_order(std::string_view args) noexcept {
   // first, find the price
   std::size_t const space_pos = args.rfind(' ');
@@ -72,23 +60,13 @@ std::optional<std::tuple<std::string_view, int, int>> parse_sell_order(std::stri
   return { { item_name, quantity, price } };
 }
 
+// Takes the first word as a command name and the rest as arguments
 std::pair<std::string_view, std::string_view> parse_command(std::string_view request) noexcept {
   std::size_t const space_pos = request.find(' ');
   if (space_pos == std::string_view::npos) {
     return { request, {} };
   }
   return { request.substr(0, space_pos), request.substr(space_pos + 1) };
-}
-
-template <typename ValueT>
-std::string print_keys(std::unordered_map<std::string_view, ValueT> const & commands) {
-  std::string result;
-  for (auto const & [command_name, _] : commands) {
-    result += command_name;
-    result += '|';
-  }
-  result.pop_back();  // remove the last '|'
-  return result;
 }
 }  // namespace
 
@@ -135,16 +113,34 @@ std::string CommandsProcessor::ping(std::string_view) {
 }
 
 std::string CommandsProcessor::whoami(std::string_view) {
-  return fmt::format("{}", user.username);
+  return user.username;
 }
 
 std::string CommandsProcessor::help(std::string_view) {
-  std::string output = "Available commands:\n";
-  for (auto const & [command_name, command] : commands) {
-    output += fmt::format("- {} - {}\n", command_name, command.description);
-  }
-  output += fmt::format("Usage: <command> [<args>], where `[]` annotates optional argumet(s)\n");
-  return output;
+  constexpr std::string_view help_str = R"(Available commands:
+- whoami: Displays the username of the current user
+- ping: Replies 'pong'
+- help: Prints this help message about all available commands
+
+- deposit: Deposits a specified amount into the user's account. Format: 'deposit <item name> [<quantity>]'.
+  'fund' is a special item name that can be used to deposit funds into the user's account
+  Example: 'deposit funds 100' - deposits 100 funds, 'deposit Sword' - deposits 1 Sword
+- withdraw: Withdraws a specified amount from the user's account. Format: 'withdraw <item name> [<quantity>]'
+  Example: 'withdraw arrow 5' - withdraws 5 arrows, 'withdraw Sword' - withdraws 1 Sword
+- view_items: Displays a list items for the current user
+
+- view_sell_orders: Displays a list of all sell orders from all users
+- sell: Places an item for sale at a specified price. Format: 'sell [immediate|auction] <item_name> [<quantity>] <price>'
+  - immediate sell order - will be executed immediately once someone buys it. Otherwise it will expire in 5 minutes
+    and items will be returned to the seller, but not the fee, which is `5% of the price + 1` funds
+  - auction sell order - will be executed once it expires if someone placed a bid on it
+- buy: Executes immediate sell order or places a bid on a auction sell order. Format: 'buy <sell_order_id> [<bid>]'
+  - no bid - executes immediate sell order
+  - bid - places a bid on a auction sell order
+  
+Usage: <command> [<args>], where `[]` annotates optional argumet(s))";
+
+  return std::string(help_str);
 }
 
 std::string CommandsProcessor::deposit(std::string_view args) {
@@ -274,9 +270,9 @@ std::string CommandsProcessor::view_sell_orders(std::string_view) {
 }
 
 std::string CommandsProcessor::process_request(std::string_view request) {
-  auto [command, args] = parse_command(request);
+  auto const [command, args] = parse_command(request);
   if (auto const it = commands.find(command); it != commands.end()) {
-    return std::invoke(it->second.invoke, this, args);
+    return std::invoke(it->second, this, args);
   }
   auto help_str = help({});
   return fmt::format("Failed to execute unknown command '{}'. {}", command, help_str);
