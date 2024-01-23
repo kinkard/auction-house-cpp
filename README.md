@@ -1,6 +1,6 @@
 # The Auction House
 
-This is a code test project for [Senior Online Programmer (New Game IP)](https://www.ubisoft.com/en-us/company/careers/search/743999932289413-senior-online-programmer-new-game-ip-) position at Ubisoft Stockholm. See [Code Test - The Auction House](docs/Online%20Code%20Test%20-%20Auction%20House.pdf) for more details.
+Auction House is a test project that implements TCP server and client according to the [Code Test - The Auction House](docs/Online%20Code%20Test%20-%20Auction%20House.pdf).
 
 ## Supported functionality
 
@@ -29,6 +29,8 @@ cmake .. && cmake --build . -j 10
 
 Transaction log can be monitored via `tail -f transaction.log`.
 
+Alternatively, VS2019 project files can be generated using `cmake .. -G "Visual Studio 16 2019"`.
+
 ## Client
 
 This repo also contains a minimalistic client that sends everything you type in console to the server and prints everything server sends back. The telnet can be used instead.
@@ -40,17 +42,27 @@ Stepan
 > Successfully logged in as Stepan
 help
 > Available commands:
-- sell - Places an item for sale at a specified price. Format: 'sell [immediate|auction] <item_name> [<quantity>] <price>'
-- view_sell_orders - Displays a list of all current sell orders from all users
-- buy - Executes immediate sell order or places a bid on a auction sell order. Format: 'buy <sell_order_id> [<bid>]'
-- view_items - Displays a list items for the current user
-- whoami - Displays the username of the current user
-- withdraw - Withdraws a specified amount from the user's account. Format: 'withdraw <item name> [<quantity>]'
-- deposit - Deposits a specified amount into the user's account. Format: 'deposit <item name> [<quantity>]'
-- help - Prints this help message about all available commands
-- ping - Replies 'pong'
-Usage: <command> [<args>], where `[]` annotates optional argumet(s)
+- whoami: Displays the username of the current user
+- ping: Replies 'pong'
+- help: Prints this help message about all available commands
 
+- deposit: Deposits a specified amount into the user's account. Format: 'deposit <item name> [<quantity>]'.
+  'fund' is a special item name that can be used to deposit funds into the user's account
+  Example: 'deposit funds 100' - deposits 100 funds, 'deposit Sword' - deposits 1 Sword
+- withdraw: Withdraws a specified amount from the user's account. Format: 'withdraw <item name> [<quantity>]'
+  Example: 'withdraw arrow 5' - withdraws 5 arrows, 'withdraw Sword' - withdraws 1 Sword
+- view_items: Displays a list items for the current user
+
+- view_sell_orders: Displays a list of all sell orders from all users
+- sell: Places an item for sale at a specified price. Format: 'sell [immediate|auction] <item_name> [<quantity>] <price>'
+  - immediate sell order - will be executed immediately once someone buys it. Otherwise it will expire in 5 minutes
+    and items will be returned to the seller, but not the fee, which is `5% of the price + 1` funds
+  - auction sell order - will be executed once it expires if someone placed a bid on it
+- buy: Executes immediate sell order or places a bid on a auction sell order. Format: 'buy <sell_order_id> [<bid>]'
+  - no bid - executes immediate sell order
+  - bid - places a bid on a auction sell order
+  
+Usage: <command> [<args>], where `[]` annotates optional argumet(s)
 ```
 
 ## Dependencies
