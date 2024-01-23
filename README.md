@@ -13,23 +13,33 @@ Auction House is a test project that implements a TCP server and client accordin
 - Users will see notifications (if they are still connected) once their sell order is executed, either immediate or auction
 - All transactions are available in the transaction log
 
-Technical details:
+### Technical details
 
 - State is managed by sqlite3 via transactions, that guarantee that the server will never go into an incorrect state
 - Each user is processed in an asynchronous manner (powered by boost.asio, which is included in the project as a standalone library), effectively utilizing CPU and memory
 - Supported platforms: MacOS, Linux (tested on Ubuntu 22.04 LTS), Windows (VS2019)
+- For simplicity, the server is single-threaded, but asynchronous, so it can handle multiple connections at the same time
 
 ## Build & Run
 
+This project uses git submodules, so either you can download with
+
+```sh
+git clone --recurse-submodules https://github.com/kinkard/auction-house-cpp.git
+```
+
+(`--shallow-submodules` can be added to speed up the process), or you can run `git submodule update --init` after cloning.
+
 ```sh
 mkdir build && cd build
+# Add -G "Visual Studio 16 2019" to generate VS2019 project files
+# Use -DCMAKE_BUILD_TYPE=Release for release build
 cmake .. && cmake --build . -j 10
+# On Windows binaries will be in the Debug/Release folder
 ./server 3000 db.sqlite transaction.log
 ```
 
 The transaction log can be monitored via `tail -f transaction.log`.
-
-Alternatively, VS2019 project files can be generated using `cmake .. -G "Visual Studio 16 2019"`.
 
 ## Client
 
@@ -61,13 +71,13 @@ help
 - buy: Executes immediate sell order or places a bid on a auction sell order. Format: 'buy <sell_order_id> [<bid>]'
   - no bid - executes immediate sell order
   - bid - places a bid on a auction sell order
-  
+
 Usage: <command> [<args>], where `[]` annotates optional argumet(s)
 ```
 
 ## Dependencies
 
-There are 5 external libraries used in this project
+There are 5 external libraries used in this project. See `deps/` folder for details:
 
 - [asio](https://github.com/chriskohlhoff/asio) - for asynchronous runtime and network
 - [sqlite3](deps/sqlite3/) (the amalgamation from <https://www.sqlite.org/download.html>) - for state/storage. I've added my own C++ wrapper around it (see sqlite3.hpp/cpp) to reduce the amount of boilerplate code. All queries live in storage.cpp and are covered by tests in tests/storage_tests.cpp
