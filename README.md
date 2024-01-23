@@ -1,6 +1,6 @@
 # The Auction House
 
-Auction House is a test project that implements TCP server and client according to the [Code Test - The Auction House](docs/Online%20Code%20Test%20-%20Auction%20House.pdf).
+Auction House is a test project that implements TCP server and client according to the [Code Test - The Auction House](docs/Online%20Code%20Test%20-%20Auction%20House.pdf). See also <https://github.com/kinkard/auction-house> for reference implementation in Rust.
 
 ## Supported functionality
 
