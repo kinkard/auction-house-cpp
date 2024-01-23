@@ -9,7 +9,7 @@
 struct sqlite3;
 struct sqlite3_stmt;
 
-// RAII wrapper for sqlite3 database
+// RAII wrapper for sqlite3 database with some helper methods
 class Sqlite3 final {
   sqlite3 * db;
 
@@ -17,6 +17,7 @@ class Sqlite3 final {
   Sqlite3(sqlite3 * db);
 
 public:
+  // Opens a database file. If the file doesn't exist, it will be created
   tl::expected<Sqlite3, std::string> static open(char const * path);
   ~Sqlite3();
 
@@ -31,6 +32,7 @@ public:
     return *this;
   }
 
+  // RAII wrapper for prepared statement
   struct Statement final {
     sqlite3_stmt * inner;
 
@@ -118,38 +120,35 @@ public:
 
   // RAII wrapper for transaction
   class TransactionGuard final {
-    Sqlite3 & db;
-    bool committed = false;
+    // pointer to the database is used to check if the transaction is still active
+    Sqlite3 * db;
 
   public:
-    TransactionGuard(Sqlite3 & db) : db(db) {}
+    TransactionGuard(Sqlite3 * db) : db(db) {}
     ~TransactionGuard() {
-      if (!committed) {
-        db.execute("ROLLBACK;");
+      if (db) {
+        db->execute("ROLLBACK;");
       }
     }
 
     TransactionGuard(TransactionGuard const &) = delete;
     TransactionGuard & operator=(TransactionGuard const &) = delete;
-    TransactionGuard(TransactionGuard && other) noexcept : db(other.db), committed(other.committed) {
-      other.committed = true;
-    }
+    TransactionGuard(TransactionGuard && other) noexcept : db(other.db) { other.db = nullptr; }
     TransactionGuard & operator=(TransactionGuard && other) noexcept {
       // move and swap idiom via local varialbe
       TransactionGuard local = std::move(other);
       std::swap(db, local.db);
-      std::swap(committed, local.committed);
       return *this;
     }
 
     // Commits the transaction
     tl::expected<void, std::string> commit() {
-      if (committed) {
+      if (!db) {
         return tl::make_unexpected("Transaction already committed");
       }
-      auto result = db.execute("COMMIT;");
+      auto result = db->execute("COMMIT;");
       if (result) {
-        committed = true;
+        db = nullptr;
       }
       return result;
     }
@@ -161,7 +160,7 @@ public:
     if (!result) {
       return tl::make_unexpected(std::move(result.error()));
     }
-    return TransactionGuard(*this);
+    return TransactionGuard(this);
   }
 
 private:
