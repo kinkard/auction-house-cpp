@@ -8,7 +8,7 @@
 #include <memory>
 #include <queue>
 
-// This is a shared state between all users and all commands
+// Shared state between all users and items
 struct SharedState {
   // Persistent storage for users and items
   Storage storage;

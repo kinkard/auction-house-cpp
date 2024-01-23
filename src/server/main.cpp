@@ -22,6 +22,7 @@ using asio::detached;
 using asio::use_awaitable;
 using asio::ip::tcp;
 
+// Coroutine that processes user commands and sends responses back to the user
 awaitable<void> process_user_commands(tcp::socket socket, CommandsProcessor processor) {
   auto shared_socket = std::make_shared<tcp::socket>(std::move(socket));
   processor.shared_state->sockets[processor.user.id] = shared_socket;
@@ -40,6 +41,7 @@ awaitable<void> process_user_commands(tcp::socket socket, CommandsProcessor proc
   }
 }
 
+// Coroutine that periodically sends notifications to users about their sell orders
 awaitable<void> notify_users(std::shared_ptr<SharedState> shared_state) {
   namespace ch = std::chrono;
   auto timer = asio::steady_timer(co_await asio::this_coro::executor, std::chrono::seconds(1));
@@ -56,7 +58,8 @@ awaitable<void> notify_users(std::shared_ptr<SharedState> shared_state) {
         try {
           co_await async_write(*socket, asio::buffer(message), use_awaitable);
         } catch (std::exception &) {
-          // Just do nothing. User might have disconnected but we still have a socket
+          // Just do nothing. User might have disconnected but we still have a socket.
+          // `process_user_commands()` will handle this case.
         }
       }
       shared_state->notifications.pop();
@@ -64,6 +67,7 @@ awaitable<void> notify_users(std::shared_ptr<SharedState> shared_state) {
   }
 }
 
+// Coroutine that periodically checks for expired sell orders and cancels them or executes them
 awaitable<void> process_expired_sell_orders(std::shared_ptr<SharedState> shared_state) {
   namespace ch = std::chrono;
   auto timer = asio::steady_timer(co_await asio::this_coro::executor, std::chrono::seconds(1));
@@ -85,6 +89,7 @@ awaitable<void> process_expired_sell_orders(std::shared_ptr<SharedState> shared_
   }
 }
 
+// Coroutine that processes a single client login and if successful, spawns a new coroutine to handle the user
 awaitable<void> process_client_login(tcp::socket socket, std::shared_ptr<SharedState> state) {
   try {
     std::string_view const greeting = "Welcome to Sundris Auction House, stranger! How can I call you?";
@@ -114,6 +119,7 @@ awaitable<void> process_client_login(tcp::socket socket, std::shared_ptr<SharedS
   }
 }
 
+// Coroutine that listens for incoming connections and spawns a new coroutine for each of them
 awaitable<void> listener(uint16_t port, std::shared_ptr<SharedState> shared_state) {
   auto executor = co_await asio::this_coro::executor;
   tcp::acceptor acceptor(executor, { tcp::v4(), port });
@@ -172,6 +178,7 @@ int main(int argc, char * argv[]) {
     co_spawn(io_context, process_expired_sell_orders(shared_state), detached);
     co_spawn(io_context, notify_users(std::move(shared_state)), detached);
 
+    // For simplicity, this server is single-threaded. Alternatively, a thread pool can be used here
     io_context.run();
   } catch (std::exception & e) {
     fmt::println("Exception: {}", e.what());

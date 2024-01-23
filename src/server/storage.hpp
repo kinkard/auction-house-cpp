@@ -82,6 +82,7 @@ class Storage final {
   Storage(Sqlite3 && db, int funds_item_id) noexcept : db(std::move(db)), funds_item_id(funds_item_id) {}
 
 public:
+  // Opens a database file. If the file doesn't exist, it will be created
   tl::expected<Storage, std::string> static open(char const * path);
   ~Storage() = default;
 

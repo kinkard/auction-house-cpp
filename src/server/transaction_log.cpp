@@ -1,10 +1,9 @@
 #include "transaction_log.hpp"
 
 #include <fmt/format.h>
-#include <chrono>
 #include <tl/expected.hpp>
 
-#include <cstdio>
+#include <chrono>
 
 tl::expected<TransactionLog, std::string> TransactionLog::open(char const * path) {
   std::FILE * file = std::fopen(path, "a");

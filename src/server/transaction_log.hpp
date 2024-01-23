@@ -15,6 +15,7 @@ class TransactionLog final {
   TransactionLog(std::FILE * file) : file(file) {}
 
 public:
+  // Opens a transaction log file in the 'append only' mode. If the file doesn't exist, it will be created
   static tl::expected<TransactionLog, std::string> open(char const * path);
   ~TransactionLog();
 
