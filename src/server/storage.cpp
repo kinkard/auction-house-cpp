@@ -36,7 +36,7 @@ tl::expected<Storage, std::string> Storage::open(const char * path) {
       "CREATE TABLE IF NOT EXISTS users ("
       "id INTEGER PRIMARY KEY,"
       "username TEXT NOT NULL UNIQUE"
-      ") STRICT;");
+      ") STRICT");
   if (!result) {
     return tl::make_unexpected(fmt::format("Failed to create 'users' table: {}", result.error()));
   }
@@ -45,18 +45,18 @@ tl::expected<Storage, std::string> Storage::open(const char * path) {
       "CREATE TABLE IF NOT EXISTS items ("
       "id INTEGER PRIMARY KEY,"
       "name TEXT NOT NULL UNIQUE"
-      ") STRICT;");
+      ") STRICT");
   if (!result) {
     return tl::make_unexpected(fmt::format("Failed to create 'items' table: {}", result.error()));
   }
 
   // If there is no item called "funds", create it
-  result = db->execute("INSERT OR IGNORE INTO items (name) VALUES ('" FUNDS_ITEM_NAME "');");
+  result = db->execute("INSERT OR IGNORE INTO items (name) VALUES ('" FUNDS_ITEM_NAME "')");
   if (!result) {
     return tl::make_unexpected(fmt::format("Failed to insert '" FUNDS_ITEM_NAME "' item: {}", result.error()));
   }
   auto funds_item_id =
-      db->query("SELECT id FROM items WHERE name = '" FUNDS_ITEM_NAME "';")
+      db->query("SELECT id FROM items WHERE name = '" FUNDS_ITEM_NAME "'")
           .and_then([&](auto select) -> tl::expected<int, std::string> {
             int rc = sqlite3_step(select.inner);
             if (rc != SQLITE_ROW) {
@@ -76,7 +76,7 @@ tl::expected<Storage, std::string> Storage::open(const char * path) {
       "FOREIGN KEY (user_id) REFERENCES users (id),"
       "FOREIGN KEY (item_id) REFERENCES items (id),"
       "PRIMARY KEY (user_id, item_id)"
-      ") STRICT;");
+      ") STRICT");
   if (!result) {
     return tl::make_unexpected(fmt::format("Failed to create 'user_items' table: {}", result.error()));
   }
@@ -101,12 +101,12 @@ tl::expected<Storage, std::string> Storage::open(const char * path) {
       "FOREIGN KEY (seller_id) REFERENCES users (id),"
       "FOREIGN KEY (buyer_id) REFERENCES users (id),"
       "FOREIGN KEY (item_id) REFERENCES items (id)"
-      ") STRICT;");
+      ") STRICT");
   if (!result) {
     return tl::make_unexpected(fmt::format("Failed to create 'sell_orders' table: {}", result.error()));
   }
   // Create an index to speed up cancel_expired_sell_orders()
-  result = db->execute("CREATE INDEX IF NOT EXISTS sell_orders_expiration_time ON sell_orders (expiration_time);");
+  result = db->execute("CREATE INDEX IF NOT EXISTS sell_orders_expiration_time ON sell_orders (expiration_time)");
   if (!result) {
     return tl::make_unexpected(fmt::format("Failed to create 'sell_orders_expiration_time' index: {}", result.error()));
   }
@@ -120,10 +120,10 @@ tl::expected<User, std::string> Storage::get_or_create_user(std::string_view use
   }
 
   // We always do INSERT to make sure that the user exists
-  auto user_inserted = this->db.execute("INSERT INTO users (username) VALUES (?1);", username);
+  auto user_inserted = this->db.execute("INSERT INTO users (username) VALUES (?1)", username);
 
   auto user_id =
-      this->db.query("SELECT id FROM users WHERE username = ?1;", username)
+      this->db.query("SELECT id FROM users WHERE username = ?1", username)
           .and_then([&](auto select) -> tl::expected<User, std::string> {
             int rc = sqlite3_step(select.inner);
             if (rc != SQLITE_ROW) {
@@ -139,7 +139,7 @@ tl::expected<User, std::string> Storage::get_or_create_user(std::string_view use
 
   // If user just created, then it has 0 funds
   if (user_inserted) {
-    auto funds_added = this->db.execute("INSERT INTO user_items (user_id, item_id, quantity) VALUES (?1, ?2, 0);",
+    auto funds_added = this->db.execute("INSERT INTO user_items (user_id, item_id, quantity) VALUES (?1, ?2, 0)",
                                         user_id.value().id, this->funds_item_id);
     if (!funds_added) {
       return tl::make_unexpected(funds_added.error());
@@ -156,7 +156,7 @@ tl::expected<ItemOperationInfo, std::string> Storage::deposit(UserId user_id, st
 
   return get_item_id(item_name)
       .or_else([&](auto &&) -> tl::expected<int, std::string> {
-        return this->db.execute("INSERT INTO items (name) VALUES (?1);", item_name)
+        return this->db.execute("INSERT INTO items (name) VALUES (?1)", item_name)
             .and_then([&]() -> tl::expected<int, std::string> { return this->db.last_insert_rowid(); });
       })
       .and_then([&](int item_id) {
@@ -186,7 +186,7 @@ tl::expected<std::vector<std::pair<std::string, int>>, std::string> Storage::vie
       .query(
           "SELECT items.name, user_items.quantity FROM user_items "
           "INNER JOIN items ON user_items.item_id = items.id "
-          "WHERE user_items.user_id = ?1;",
+          "WHERE user_items.user_id = ?1",
           user_id)
       .and_then([&](auto select) -> tl::expected<std::vector<std::pair<std::string, int>>, std::string> {
         std::vector<std::pair<std::string, int>> items;
@@ -250,7 +250,7 @@ tl::expected<ItemOperationInfo, std::string> Storage::place_sell_order(SellOrder
       .and_then([&](int item_id) {
         return db.execute(
             "INSERT INTO sell_orders (seller_id, item_id, quantity, price, expiration_time, buyer_id)"
-            "VALUES (?1, ?2, ?3, ?4, ?5, ?6);",
+            "VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             seller_id, item_id, quantity, price, unix_expiration_time, buyer_id);
       })
       .and_then([&]() { return transaction_guard->commit(); })
@@ -271,7 +271,7 @@ tl::expected<std::vector<SellOrder>, std::string> Storage::view_sell_orders() {
           "  sell_orders.buyer_id "
           "FROM sell_orders "
           "INNER JOIN users ON sell_orders.seller_id = users.id "
-          "INNER JOIN items ON sell_orders.item_id = items.id;")
+          "INNER JOIN items ON sell_orders.item_id = items.id")
       .and_then([&](auto select) -> tl::expected<std::vector<SellOrder>, std::string> {
         std::vector<SellOrder> orders;
         int rc;
@@ -320,7 +320,7 @@ tl::expected<std::vector<SellOrderExecutionInfo>, std::string> Storage::process_
             "  quantity, "
             "  price "
             "FROM sell_orders "
-            "WHERE sell_orders.expiration_time <= ?1 AND buyer_id IS NOT NULL AND buyer_id != seller_id;",
+            "WHERE sell_orders.expiration_time <= ?1 AND buyer_id IS NOT NULL AND buyer_id != seller_id",
             unix_now)
           .and_then([&](auto select) -> tl::expected<std::vector<SellOrderExecutionInfo>, std::string> {
             std::vector<SellOrderExecutionInfo> orders;
@@ -376,14 +376,14 @@ tl::expected<std::vector<SellOrderExecutionInfo>, std::string> Storage::process_
       "  IFNULL(user_items.quantity, 0) + aggregated_orders.total_quantity "
       "FROM aggregated_orders "
       "LEFT JOIN user_items ON user_items.user_id = aggregated_orders.user_id "
-      "  AND user_items.item_id = aggregated_orders.item_id;",
+      "  AND user_items.item_id = aggregated_orders.item_id",
       unix_now, funds_item_id);
   if (!update_result) {
     return tl::make_unexpected(fmt::format("Failed to cancel expired sell orders: {}", update_result.error()));
   }
 
   // Delete expired orders
-  auto delete_result = db.execute("DELETE FROM sell_orders WHERE expiration_time <= ?1;", unix_now);
+  auto delete_result = db.execute("DELETE FROM sell_orders WHERE expiration_time <= ?1", unix_now);
   if (!delete_result) {
     return tl::make_unexpected(fmt::format("Failed to delete expired sell orders: {}", delete_result.error()));
   }
@@ -427,7 +427,7 @@ tl::expected<SellOrderExecutionInfo, std::string> Storage::execute_immediate_sel
       // Third, transfer item to the buyer
       .and_then([&]() { return deposit_inner(buyer_id, order->item_id, order->quantity); })
       // Finally, delete the order
-      .and_then([&]() { return db.execute("DELETE FROM sell_orders WHERE id = ?1;", sell_order_id); })
+      .and_then([&]() { return db.execute("DELETE FROM sell_orders WHERE id = ?1", sell_order_id); })
       // And of course, commit the transaction
       .and_then([&]() { return transaction_guard->commit(); })
       // And return the execution info
@@ -468,7 +468,7 @@ tl::expected<void, std::string> Storage::place_bid_on_auction_sell_order(UserId 
       .map_error([&](auto &&) { return fmt::format("Not enough funds to buy"); })
       // Second, update order price and buyer_id
       .and_then([&]() {
-        return db.execute("UPDATE sell_orders SET price = ?1, buyer_id = ?2 WHERE id = ?3;", bid, buyer_id,
+        return db.execute("UPDATE sell_orders SET price = ?1, buyer_id = ?2 WHERE id = ?3", bid, buyer_id,
                           sell_order_id);
       })
       // And of course, commit the transaction
@@ -476,7 +476,7 @@ tl::expected<void, std::string> Storage::place_bid_on_auction_sell_order(UserId 
 }
 
 tl::expected<int, std::string> Storage::get_item_id(std::string_view item_name) {
-  return this->db.query("SELECT id FROM items WHERE name = ?1;", item_name)
+  return this->db.query("SELECT id FROM items WHERE name = ?1", item_name)
       .and_then([&](auto select) -> tl::expected<int, std::string> {
         int rc = sqlite3_step(select.inner);
         if (rc != SQLITE_ROW) {
@@ -487,7 +487,7 @@ tl::expected<int, std::string> Storage::get_item_id(std::string_view item_name) 
 }
 
 std::optional<int> Storage::get_items_quantity(UserId user_id, int item_id) {
-  auto stmt = this->db.query("SELECT quantity FROM user_items WHERE user_id = ?1 AND item_id = ?2;", user_id, item_id);
+  auto stmt = this->db.query("SELECT quantity FROM user_items WHERE user_id = ?1 AND item_id = ?2", user_id, item_id);
   if (!stmt) {
     return std::nullopt;
   }
@@ -501,7 +501,7 @@ std::optional<int> Storage::get_items_quantity(UserId user_id, int item_id) {
 tl::expected<void, std::string> Storage::deposit_inner(UserId user_id, int item_id, int quantity) {
   return this->db.execute(
       "INSERT INTO user_items (user_id, item_id, quantity) VALUES (?1, ?2, ?3) "
-      "ON CONFLICT (user_id, item_id) DO UPDATE SET quantity = quantity + ?3;",
+      "ON CONFLICT (user_id, item_id) DO UPDATE SET quantity = quantity + ?3",
       user_id, item_id, quantity);
 }
 
@@ -513,10 +513,10 @@ tl::expected<void, std::string> Storage::withdraw_inner(UserId user_id, int item
 
   tl::expected<void, std::string> reduce_result;
   if (item_id == funds_item_id || user_item_quantity > quantity) {
-    reduce_result = db.execute("UPDATE user_items SET quantity = quantity - ?3 WHERE user_id = ?1 AND item_id = ?2;",
+    reduce_result = db.execute("UPDATE user_items SET quantity = quantity - ?3 WHERE user_id = ?1 AND item_id = ?2",
                                user_id, item_id, quantity);
   } else {
-    reduce_result = db.execute("DELETE FROM user_items WHERE user_id = ?1 AND item_id = ?2;", user_id, item_id);
+    reduce_result = db.execute("DELETE FROM user_items WHERE user_id = ?1 AND item_id = ?2", user_id, item_id);
   }
   return reduce_result;
 }
@@ -530,7 +530,7 @@ std::optional<Storage::SellOrderInnerInfo> Storage::get_sell_order_info(int sell
       "  sell_orders.price,"
       "  sell_orders.buyer_id "
       "FROM sell_orders "
-      "WHERE sell_orders.id = ?1;",
+      "WHERE sell_orders.id = ?1",
       sell_order_id);
   if (!stmt) {
     return std::nullopt;
