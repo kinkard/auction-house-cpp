@@ -1,22 +1,22 @@
 # The Auction House
 
-Auction House is a test project that implements TCP server and client according to the [Code Test - The Auction House](docs/Online%20Code%20Test%20-%20Auction%20House.pdf). See also <https://github.com/kinkard/auction-house> for reference implementation in Rust.
+Auction House is a test project that implements a TCP server and client according to the [Code Test - The Auction House](docs/Online%20Code%20Test%20-%20Auction%20House.pdf). See also <https://github.com/kinkard/auction-house> for a reference implementation in Rust.
 
 ## Supported functionality
 
-- User can login using `client` or telnet, once `server` is launched
-- User can deposit or withdraw items, using the following command: `deposit/withdraw <item name> [quantity]`. For example, `deposit funds 100`
-- User can see own items via `view_items`
-- User can create immediate or auction sell orders using `sell [immediate|auction] <item_name> [<quantity>] <price>` command. For example, `sell Sword 1 100` will create a immediate sell order for 1 Sword for 100 funds. 5% + 1 funds will be taken as a fee
-- User can see all sell orders via `view_sell_orders`
-- User can buy item that is on sale or make a bid on auction order. Sell orders are refered by id. For example, `buy 20` will buy order #20, while `buy 20 200` will made a bid to the order #20 with 200 funds. User will see errors if order is not matched, if bid is smaller than current price and so on
-- User will see notifications (if they are still connected) once their sell order is executed, either immediate or auction
-- All transactions are available in transaction log
+- Users can log in using `client` or telnet, once `server` is launched
+- Users can deposit or withdraw items, using the following command: `deposit/withdraw <item name> [quantity]`. For example, `deposit funds 100`
+- Users can see their own items via `view_items`
+- Users can create immediate or auction sell orders using `sell [immediate|auction] <item_name> [<quantity>] <price>` command. For example, `sell Sword 1 100` will create an immediate sell order for 1 Sword for 100 funds. 5% + 1 fund will be taken as a fee
+- Users can see all sell orders via `view_sell_orders`
+- Users can buy an item that is on sale or make a bid on an auction order. Sell orders are referred to by id. For example, `buy 20` will buy order #20, while `buy 20 200` will make a bid on the order #20 with 200 funds. Users will see errors if the order is not matched, if the bid is smaller than the current price, and so on
+- Users will see notifications (if they are still connected) once their sell order is executed, either immediate or auction
+- All transactions are available in the transaction log
 
 Technical details:
 
-- State is managed by sqlite3 via transactions, that guarantee that server will never go in incorrect state
-- Each user processed in a asynchronous manner (povered by boost.asio, that is included into the project as a standalone library), effectively utilizing CPU and memory
+- State is managed by sqlite3 via transactions, that guarantee that the server will never go into an incorrect state
+- Each user is processed in an asynchronous manner (powered by boost.asio, which is included in the project as a standalone library), effectively utilizing CPU and memory
 - Supported platforms: MacOS, Linux (tested on Ubuntu 22.04 LTS), Windows (VS2019)
 
 ## Build & Run
@@ -27,13 +27,13 @@ cmake .. && cmake --build . -j 10
 ./server 3000 db.sqlite transaction.log
 ```
 
-Transaction log can be monitored via `tail -f transaction.log`.
+The transaction log can be monitored via `tail -f transaction.log`.
 
 Alternatively, VS2019 project files can be generated using `cmake .. -G "Visual Studio 16 2019"`.
 
 ## Client
 
-This repo also contains a minimalistic client that sends everything you type in console to the server and prints everything server sends back. The telnet can be used instead.
+This repo also contains a minimalistic client that sends everything you type in the console to the server and prints everything the server sends back. Telnet can be used instead.
 
 ```sh
 $ ./client localhost:3000
@@ -67,14 +67,14 @@ Usage: <command> [<args>], where `[]` annotates optional argumet(s)
 
 ## Dependencies
 
-There are 5 external library used in this project
+There are 5 external libraries used in this project
 
 - [asio](https://github.com/chriskohlhoff/asio) - for asynchronous runtime and network
-- [sqlite3](deps/sqlite3/) (the amalgamation from <https://www.sqlite.org/download.html>) - for state/storage. I've added my own C++ wrapper around it (see sqlite3.hpp/cpp) to reduce amount of boiler plate code. All queries live in storage.cpp and covered by tests in tests/storage_tests.cpp
-- [fmt::fmt](https://github.com/fmtlib/fmt) - for nice and shiny formatting that would work with VS2019
-- [tl::expected](https://github.com/TartanLlama/expected) - C++11 compatible way to handle errors without throwing exceptions everywhere
+- [sqlite3](deps/sqlite3/) (the amalgamation from <https://www.sqlite.org/download.html>) - for state/storage. I've added my own C++ wrapper around it (see sqlite3.hpp/cpp) to reduce the amount of boilerplate code. All queries live in storage.cpp and are covered by tests in tests/storage_tests.cpp
+- [fmt::fmt](https://github.com/fmtlib/fmt) - for nice and shiny formatting that works with VS2019
+- [tl::expected](https://github.com/TartanLlama/expected) - A C++11 compatible way to handle errors without throwing exceptions everywhere
 - [gtest](https://github.com/google/googletest) - for core logic tests
 
 ## VS2019 note
 
-This Auction House implementation uses boost.asio (as a standalone library) and corutines, which are [supported by VS2019 from 16.8 version](https://learn.microsoft.com/en-us/cpp/overview/visual-cpp-language-conformance?view=msvc-170). Please ensure that you use the latest available version of the VS2019.
+This Auction House implementation uses boost.asio (as a standalone library) and coroutines, which are [supported by VS2019 from 16.8 version](https://learn.microsoft.com/en-us/cpp/overview/visual-cpp-language-conformance?view=msvc-170). Please ensure that you use the latest available version of VS2019.
