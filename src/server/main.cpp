@@ -142,7 +142,6 @@ int main(int argc, char * argv[]) {
     fmt::println("Failed to open database: {}", storage.error());
     return 1;
   }
-  auto shared_storage = std::make_shared<Storage>(std::move(*storage));
 
   auto transaction_log = TransactionLog::open(cli->transaction_log_path);
   if (!transaction_log) {
@@ -151,7 +150,7 @@ int main(int argc, char * argv[]) {
   }
 
   auto shared_state = std::make_shared<SharedState>(SharedState{
-      .storage = std::move(*shared_storage),
+      .storage = std::move(*storage),
       .transaction_log = std::move(*transaction_log),
       .notifications = {},
       .sockets = {},
