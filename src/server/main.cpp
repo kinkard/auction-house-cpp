@@ -1,3 +1,4 @@
+#include "cli.hpp"
 #include "commands.hpp"
 #include "shared_state.hpp"
 #include "storage.hpp"
@@ -12,7 +13,6 @@
 
 #include <fmt/format.h>
 
-#include <charconv>
 #include <cstring>
 #include <string_view>
 
@@ -131,27 +131,20 @@ awaitable<void> listener(uint16_t port, std::shared_ptr<SharedState> shared_stat
 }
 
 int main(int argc, char * argv[]) {
-  if (argc != 4) {
-    fmt::println("Usage: server <port> <path_to_db> <path_to_transaction_log>");
-    fmt::println("Example: server 3000 db.sqlite transaction.log");
+  auto cli = Cli::parse(argc, argv);
+  if (!cli) {
+    fmt::println("{}", cli.error());
     return 1;
   }
 
-  uint16_t port;
-  std::from_chars_result result = std::from_chars(argv[1], std::strchr(argv[1], '\0'), port);
-  if (result.ec != std::errc()) {
-    fmt::println("Invalid argument '{}'. Port must be in range [1, 65535]", argv[1]);
-    return 1;
-  }
-
-  auto storage = Storage::open(argv[2]);
+  auto storage = Storage::open(cli->db_path);
   if (!storage) {
     fmt::println("Failed to open database: {}", storage.error());
     return 1;
   }
   auto shared_storage = std::make_shared<Storage>(std::move(*storage));
 
-  auto transaction_log = TransactionLog::open(argv[3]);
+  auto transaction_log = TransactionLog::open(cli->transaction_log_path);
   if (!transaction_log) {
     fmt::println("Failed to open transaction log: {}", transaction_log.error());
     return 1;
@@ -174,7 +167,7 @@ int main(int argc, char * argv[]) {
       io_context.stop();
     });
 
-    co_spawn(io_context, listener(port, shared_state), detached);
+    co_spawn(io_context, listener(cli->port, shared_state), detached);
     co_spawn(io_context, process_expired_sell_orders(shared_state), detached);
     co_spawn(io_context, notify_users(std::move(shared_state)), detached);
 

@@ -58,8 +58,9 @@ else()
 endif()
 
 # Server
-add_executable(server 
+add_executable(server
   src/server/main.cpp
+  src/server/cli.cpp
   src/server/storage.cpp
   src/server/sqlite3.cpp
   src/server/commands.cpp

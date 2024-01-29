@@ -5,8 +5,9 @@
 
 #include <chrono>
 
-tl::expected<TransactionLog, std::string> TransactionLog::open(char const * path) {
-  std::FILE * file = std::fopen(path, "a");
+tl::expected<TransactionLog, std::string> TransactionLog::open(std::string_view path) {
+  // todo: ensure that there is a `\0` at the end of the string
+  std::FILE * file = std::fopen(path.data(), "a");
   if (!file) {
     return tl::make_unexpected(fmt::format("failed to open transaction log '{}'", path));
   }

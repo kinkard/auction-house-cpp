@@ -4,6 +4,7 @@
 #include "transaction_log.hpp"
 
 #include <fmt/format.h>
+#include <string_view>
 
 using UserId = int;
 
@@ -83,7 +84,7 @@ class Storage final {
 
 public:
   // Opens a database file. If the file doesn't exist, it will be created
-  tl::expected<Storage, std::string> static open(char const * path);
+  tl::expected<Storage, std::string> static open(std::string_view path);
   ~Storage() = default;
 
   // This class cannot be copied, but can be moved

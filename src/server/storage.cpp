@@ -7,8 +7,9 @@
 // Use magic of the C++ string literal concatenation to make the code more readable
 #define FUNDS_ITEM_NAME "funds"
 
-tl::expected<Storage, std::string> Storage::open(const char * path) {
-  auto db = Sqlite3::open(path);
+tl::expected<Storage, std::string> Storage::open(std::string_view path) {
+  // todo: ensure that there is a `\0` at the end of the string
+  auto db = Sqlite3::open(path.data());
   if (!db) {
     return tl::make_unexpected(fmt::format("Failed to open database: {}", db.error()));
   }
