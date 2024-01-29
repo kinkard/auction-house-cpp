@@ -4,8 +4,8 @@
 
 #include <fmt/format.h>
 
-// Use magic of the C++ string literal concatenation to make the code more readable
-#define FUNDS_ITEM_NAME "funds"
+// Store funds as an item for simplicity in `deposit` and `withdraw` operations
+constexpr std::string_view FUNDS_ITEM_NAME = "funds";
 
 tl::expected<Storage, std::string> Storage::open(std::string_view path) {
   // todo: ensure that there is a `\0` at the end of the string
@@ -52,12 +52,12 @@ tl::expected<Storage, std::string> Storage::open(std::string_view path) {
   }
 
   // If there is no item called "funds", create it
-  result = db->execute("INSERT OR IGNORE INTO items (name) VALUES ('" FUNDS_ITEM_NAME "')");
+  result = db->execute("INSERT OR IGNORE INTO items (name) VALUES (?1)", FUNDS_ITEM_NAME);
   if (!result) {
-    return tl::make_unexpected(fmt::format("Failed to insert '" FUNDS_ITEM_NAME "' item: {}", result.error()));
+    return tl::make_unexpected(fmt::format("Failed to insert '{}' item: {}", FUNDS_ITEM_NAME, result.error()));
   }
   auto funds_item_id =
-      db->query("SELECT id FROM items WHERE name = '" FUNDS_ITEM_NAME "'")
+      db->query("SELECT id FROM items WHERE name = ?1", FUNDS_ITEM_NAME)
           .and_then([&](auto select) -> tl::expected<int, std::string> {
             int rc = sqlite3_step(select.inner);
             if (rc != SQLITE_ROW) {
@@ -66,7 +66,7 @@ tl::expected<Storage, std::string> Storage::open(std::string_view path) {
             return sqlite3_column_int(select.inner, 0);
           });
   if (!funds_item_id) {
-    return tl::make_unexpected(fmt::format("Failed to get '" FUNDS_ITEM_NAME "' item id: {}", funds_item_id.error()));
+    return tl::make_unexpected(fmt::format("Failed to get '{}' item id: {}", FUNDS_ITEM_NAME, funds_item_id.error()));
   }
 
   result = db->execute(
@@ -214,8 +214,7 @@ tl::expected<ItemOperationInfo, std::string> Storage::place_sell_order(SellOrder
     return tl::make_unexpected("Cannot sell for negative price");
   }
   if (item_name == FUNDS_ITEM_NAME) {
-    return tl::make_unexpected(
-        fmt::format("Cannot sell " FUNDS_ITEM_NAME " for " FUNDS_ITEM_NAME ", it's a speculation!"));
+    return tl::make_unexpected(fmt::format("Cannot sell {0} for {0}, it's a speculation!", FUNDS_ITEM_NAME));
   }
 
   // As mentioned earlier, buyer_id is special stores an information about the order type and state.
