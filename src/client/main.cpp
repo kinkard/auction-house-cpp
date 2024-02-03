@@ -3,6 +3,7 @@
 #include <asio/connect.hpp>
 #include <asio/detached.hpp>
 #include <asio/ip/tcp.hpp>
+#include <asio/signal_set.hpp>
 #include <asio/use_awaitable.hpp>
 #include <asio/write.hpp>
 
@@ -81,6 +82,13 @@ int main(int argc, char * argv[]) {
 
   try {
     asio::io_context io_context;
+
+    // Graceful shutdown
+    asio::signal_set signals(io_context, SIGINT, SIGTERM);
+    signals.async_wait([&](auto, auto) {
+      std::cout << "Shutting down..." << std::endl;
+      io_context.stop();
+    });
 
     tcp::resolver resolver(io_context);
     tcp::resolver::query query(hostname_port->first, hostname_port->second);
