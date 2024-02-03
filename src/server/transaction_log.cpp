@@ -29,3 +29,15 @@ void TransactionLog::log(int user_id, std::string_view message) {
   std::fwrite(log_entry.data(), 1, log_entry.size(), file);
   std::fflush(file);
 }
+
+void TransactionLog::save(UserId user_id, std::string_view operation_name, ItemOperationInfo operation_info) {
+  log(user_id,
+      fmt::format("{} .item_id={} .quantity={}", operation_name, operation_info.item_id, operation_info.quantity));
+}
+
+void TransactionLog::save(SellOrderExecutionInfo const & order_info) {
+  log(order_info.seller_id, fmt::format("sold .item_id={} .quantity={} .price={} .order_id={}", order_info.item_id,
+                                        order_info.quantity, order_info.price, order_info.id));
+  log(order_info.buyer_id, fmt::format("bought .item_id={} .quantity={} .price={} .order_id={}", order_info.item_id,
+                                       order_info.quantity, order_info.price, order_info.id));
+}

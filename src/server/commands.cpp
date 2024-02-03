@@ -25,14 +25,14 @@ struct formatter<SellOrderType> {
 };
 
 template <>
-struct formatter<SellOrder> {
+struct formatter<SellOrderInfo> {
   template <typename ParseContext>
   constexpr auto parse(ParseContext & ctx) {
     return ctx.begin();
   }
 
   template <typename FormatContext>
-  auto format(const SellOrder & order, FormatContext & ctx) const {
+  auto format(const SellOrderInfo & order, FormatContext & ctx) const {
     std::string_view const order_type_str = order.type == SellOrderType::Auction ? "on auction " : "";
 
     if (order.quantity == 1) {
@@ -122,12 +122,12 @@ std::optional<Deposit> Deposit::parse(std::string_view args) {
 }
 
 std::string Deposit::execute(User const & user, std::shared_ptr<SharedState> const & shared_state) {
-  auto result = shared_state->storage.deposit(user.id, item_name, quantity);
+  auto result = shared_state->auction_service.deposit(user.id, item_name, quantity);
   if (!result) {
     return fmt::format("Failed to deposit {} {}(s) with error: {}", quantity, item_name, result.error());
   }
 
-  result->save_to(user.id, "deposited", shared_state->transaction_log);
+  shared_state->transaction_log.save(user.id, "deposited", *result);
   return fmt::format("Successfully deposited {} {}(s)", quantity, item_name);
 }
 
@@ -137,12 +137,12 @@ std::optional<Withdraw> Withdraw::parse(std::string_view args) {
 }
 
 std::string Withdraw::execute(User const & user, std::shared_ptr<SharedState> const & shared_state) {
-  auto result = shared_state->storage.withdraw(user.id, item_name, quantity);
+  auto result = shared_state->auction_service.withdraw(user.id, item_name, quantity);
   if (!result) {
     return fmt::format("Failed to withdraw {} {}(s) with error: {}", quantity, item_name, result.error());
   }
 
-  result->save_to(user.id, "withdrawn", shared_state->transaction_log);
+  shared_state->transaction_log.save(user.id, "withdrawn", *result);
   return fmt::format("Successfully withdrawn {} {}(s)", quantity, item_name);
 }
 
@@ -151,7 +151,7 @@ std::optional<ViewItems> ViewItems::parse(std::string_view) {
 }
 
 std::string ViewItems::execute(User const & user, std::shared_ptr<SharedState> const & shared_state) {
-  auto result = shared_state->storage.view_items(user.id);
+  auto result = shared_state->storage->view_user_items(user.id);
   if (!result) {
     return fmt::format("Failed to view items with error: {}", result.error());
   }
@@ -192,14 +192,14 @@ std::string Sell::execute(User const & user, std::shared_ptr<SharedState> const 
   constexpr auto const order_lifetime = std::chrono::minutes(5);
   int64_t const unix_expiration_time = (std::chrono::seconds(std::time(NULL)) + order_lifetime).count();
 
-  auto result =
-      shared_state->storage.place_sell_order(order_type, user.id, item_name, quantity, price, unix_expiration_time);
+  auto result = shared_state->auction_service.place_sell_order(order_type, user.id, item_name, quantity, price,
+                                                               unix_expiration_time);
   if (!result) {
     return fmt::format("Failed to place {} sell order for {} {}(s) with error: {}", order_type, quantity, item_name,
                        result.error());
   }
 
-  result->save_to(user.id, "payed fee", shared_state->transaction_log);
+  shared_state->transaction_log.save(user.id, "payed fee", *result);
   return fmt::format("Successfully placed {} sell order for {} {}(s)", order_type, quantity, item_name);
 }
 
@@ -228,18 +228,18 @@ std::optional<Buy> Buy::parse(std::string_view args) {
 
 std::string Buy::execute(User const & user, std::shared_ptr<SharedState> const & shared_state) {
   if (bid) {
-    auto result = shared_state->storage.place_bid_on_auction_sell_order(user.id, sell_order_id, *bid);
+    auto result = shared_state->auction_service.place_bid_on_auction_sell_order(user.id, sell_order_id, *bid);
     if (!result) {
       return fmt::format("Failed to place a bid on #{} auction sell order with error: {}", sell_order_id,
                          result.error());
     }
     return fmt::format("Successfully placed a bid on #{} auction sell order", sell_order_id);
   } else {
-    auto result = shared_state->storage.execute_immediate_sell_order(user.id, sell_order_id);
+    auto result = shared_state->auction_service.execute_immediate_sell_order(user.id, sell_order_id);
     if (!result) {
       return fmt::format("Failed to execute #{} sell order with error: {}", sell_order_id, result.error());
     }
-    result->save_to(shared_state->transaction_log);
+    shared_state->transaction_log.save(*result);
 
     shared_state->notifications.push(std::make_pair(
         result->seller_id, fmt::format("Your sell order #{} was executed for {}", result->id, result->price)));
@@ -253,7 +253,7 @@ std::optional<ViewSellOrders> ViewSellOrders::parse(std::string_view) {
 }
 
 std::string ViewSellOrders::execute(User const &, std::shared_ptr<SharedState> const & shared_state) {
-  auto result = shared_state->storage.view_sell_orders();
+  auto result = shared_state->storage->view_sell_orders();
   if (!result) {
     return fmt::format("Failed to view sell orders with error: {}", result.error());
   }

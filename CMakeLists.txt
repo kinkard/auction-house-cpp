@@ -59,13 +59,15 @@ endif()
 
 # Server
 add_executable(server
-  src/server/main.cpp
+  src/server/auction_service.cpp
   src/server/cli.cpp
-  src/server/storage.cpp
-  src/server/sqlite3.cpp
-  src/server/commands.cpp
   src/server/commands_processor.cpp
+  src/server/commands.cpp
+  src/server/main.cpp
+  src/server/sqlite3.cpp
+  src/server/storage.cpp
   src/server/transaction_log.cpp
+  src/server/user_service.cpp
 )
 target_link_libraries(server asio sqlite3 fmt::fmt tl::expected)
 target_compile_options(server PRIVATE ${COMPILE_FLAGS})

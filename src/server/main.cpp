@@ -77,12 +77,12 @@ awaitable<void> process_expired_sell_orders(std::shared_ptr<SharedState> shared_
     timer.expires_at(timer.expiry() + ch::seconds(1));
 
     int64_t const unix_now = std::chrono::seconds(std::time(NULL)).count();
-    auto result = shared_state->storage.process_expired_sell_orders(unix_now);
+    auto result = shared_state->storage->process_expired_sell_orders(unix_now);
     if (!result) {
       fmt::println("Failed to cancel expired sell orders at {} unix time: {}", unix_now, result.error());
     }
     for (auto const & order : *result) {
-      order.save_to(shared_state->transaction_log);
+      shared_state->transaction_log.save(order);
       shared_state->notifications.push(std::make_pair(
           order.seller_id, fmt::format("Your sell order #{} was executed for {}", order.id, order.price)));
     }
@@ -99,7 +99,7 @@ awaitable<void> process_client_login(tcp::socket socket, std::shared_ptr<SharedS
     std::size_t n = co_await socket.async_read_some(asio::buffer(buffer), use_awaitable);
     std::string_view const username = { buffer, n };
 
-    auto user = state->storage.get_or_create_user(username).map_error(
+    auto user = state->user_service.login(username).map_error(
         [&](auto && err) { return fmt::format("Failed to login as '{}': {}", username, err); });
     if (!user) {
       co_await async_write(socket, asio::buffer(user.error()), use_awaitable);
@@ -148,9 +148,12 @@ int main(int argc, char * argv[]) {
     fmt::println("Failed to open transaction log: {}", transaction_log.error());
     return 1;
   }
+  auto shared_storage = std::make_shared<Storage>(std::move(*storage));
 
   auto shared_state = std::make_shared<SharedState>(SharedState{
-      .storage = std::move(*storage),
+      .storage = shared_storage,
+      .auction_service = AuctionService(shared_storage),
+      .user_service = UserService(shared_storage),
       .transaction_log = std::move(*transaction_log),
       .notifications = {},
       .sockets = {},

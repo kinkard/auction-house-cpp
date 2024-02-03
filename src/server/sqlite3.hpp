@@ -118,51 +118,6 @@ public:
   // Returns the last inserted row id. Suitable to get the id after INSERT query
   int last_insert_rowid() const;
 
-  // RAII wrapper for transaction
-  class TransactionGuard final {
-    // pointer to the database is used to check if the transaction is still active
-    Sqlite3 * db;
-
-  public:
-    TransactionGuard(Sqlite3 * db) : db(db) {}
-    ~TransactionGuard() {
-      if (db) {
-        db->execute("ROLLBACK;");
-      }
-    }
-
-    TransactionGuard(TransactionGuard const &) = delete;
-    TransactionGuard & operator=(TransactionGuard const &) = delete;
-    TransactionGuard(TransactionGuard && other) noexcept : db(other.db) { other.db = nullptr; }
-    TransactionGuard & operator=(TransactionGuard && other) noexcept {
-      // move and swap idiom via local varialbe
-      TransactionGuard local = std::move(other);
-      std::swap(db, local.db);
-      return *this;
-    }
-
-    // Commits the transaction
-    tl::expected<void, std::string> commit() {
-      if (!db) {
-        return tl::make_unexpected("Transaction already committed");
-      }
-      auto result = db->execute("COMMIT;");
-      if (result) {
-        db = nullptr;
-      }
-      return result;
-    }
-  };
-
-  // Begins a transaction. If TransactionGuard is destroyed without calling `commit`, the transaction is rolled back
-  tl::expected<TransactionGuard, std::string> begin_transaction() {
-    auto result = execute("BEGIN;");
-    if (!result) {
-      return tl::make_unexpected(std::move(result.error()));
-    }
-    return TransactionGuard(this);
-  }
-
 private:
   // Prepares SQL statement for execution. Use `query` instead
   tl::expected<Statement, std::string> prepare(std::string_view sql);

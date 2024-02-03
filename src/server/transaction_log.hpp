@@ -1,5 +1,7 @@
 #pragma once
 
+#include "types.hpp"
+
 #include <tl/expected.hpp>
 
 #include <cstdio>
@@ -32,4 +34,8 @@ public:
 
   // sales, deposits and withdrawals
   void log(int user_id, std::string_view message);
+
+  void save(UserId user_id, std::string_view operation_name, ItemOperationInfo operation_info);
+
+  void save(SellOrderExecutionInfo const & sell_order_execution_info);
 };

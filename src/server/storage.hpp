@@ -1,86 +1,22 @@
 #pragma once
 
 #include "sqlite3.hpp"
-#include "transaction_log.hpp"
+#include "types.hpp"
 
 #include <fmt/format.h>
+#include <optional>
 #include <string_view>
-
-using UserId = int;
-
-struct User {
-  UserId id;
-  std::string username;
-};
-
-enum class SellOrderType : int {
-  // Order will be immediately executed if there is a matching buy order
-  Immediate = 1,
-  // Order will be executed only after the auction is over
-  Auction = 2,
-};
-
-inline std::string_view to_string(SellOrderType order_type) {
-  switch (order_type) {
-  case SellOrderType::Immediate: return "immediate";
-  case SellOrderType::Auction: return "auction";
-  }
-  return "unknown";
-}
-
-inline std::optional<SellOrderType> parse_SellOrderType(std::string_view str) {
-  if (str == "immediate") {
-    return SellOrderType::Immediate;
-  } else if (str == "auction") {
-    return SellOrderType::Auction;
-  }
-  return std::nullopt;
-}
-
-struct SellOrder {
-  int id;
-  std::string seller_name;
-  std::string item_name;
-  int quantity;
-  int price;
-  std::string expiration_time;
-  SellOrderType type;
-};
-
-// Internal struct that represents a sell order close to how it is stored in the database
-struct SellOrderExecutionInfo {
-  int id;
-  UserId seller_id;
-  UserId buyer_id;
-  int item_id;
-  int quantity;
-  int price;
-
-  void save_to(TransactionLog & transaction_log) const {
-    transaction_log.log(
-        seller_id, fmt::format("sold .item_id={} .quantity={} .price={} .order_id={}", item_id, quantity, price, id));
-    transaction_log.log(
-        buyer_id, fmt::format("bought .item_id={} .quantity={} .price={} .order_id={}", item_id, quantity, price, id));
-  }
-};
-
-// A record for a transaction log
-struct ItemOperationInfo {
-  int item_id;
-  int quantity;
-
-  void save_to(UserId user_id, std::string_view operation, TransactionLog & transaction_log) const {
-    transaction_log.log(user_id, fmt::format("{} .item_id={} .quantity={}", operation, item_id, quantity));
-  }
-};
 
 // Wrapper around sqlite3 database with core business logic
 class Storage final {
-  Sqlite3 db;
-  int funds_item_id;
+  Sqlite3 _db;
+  int _funds_item_id;
+
+  // Store funds as an item for simplicity in `deposit` and `withdraw` operations
+  static constexpr std::string_view FUNDS_ITEM_NAME = "funds";
 
   // constructor is private, use `open` instead
-  Storage(Sqlite3 && db, int funds_item_id) noexcept : db(std::move(db)), funds_item_id(funds_item_id) {}
+  Storage(Sqlite3 && db, int funds_item_id) noexcept : _db(std::move(db)), _funds_item_id(funds_item_id) {}
 
 public:
   // Opens a database file. If the file doesn't exist, it will be created
@@ -93,42 +29,49 @@ public:
   Storage(Storage &&) = default;
   Storage & operator=(Storage &&) = default;
 
-  // Returns user id of the already existing or newly created user
-  tl::expected<User, std::string> get_or_create_user(std::string_view username);
+  // Funds are stored in a special item with the given name
+  std::string_view funds_item_name() const { return FUNDS_ITEM_NAME; }
+  int funds_item_id() const { return _funds_item_id; }
 
-  // Deposint item to the user. "funds" item is used to store the balance
-  tl::expected<ItemOperationInfo, std::string> deposit(UserId user_id, std::string_view item_name, int quantity);
+  // Returns the user id by username if exists. std::nullopt otherwise
+  std::optional<UserId> get_user_id(std::string_view username);
 
-  // Withdraws item from the user. "funds" item is used to store the balance
-  tl::expected<ItemOperationInfo, std::string> withdraw(UserId user_id, std::string_view item_name, int quantity);
+  // Creates a new user with the given username. Returns the user id if the user was created successfully
+  tl::expected<UserId, std::string> create_user(std::string_view username);
+
+  // Creates a new item with the given name. Returns the item id if the item was created successfully
+  tl::expected<int, std::string> create_item(std::string_view item_name);
+
+  // Returns the item id by name if exists
+  tl::expected<int, std::string> get_item_id(std::string_view item_name);
+
+  // Add or subtract the quantity of the item for the user
+  tl::expected<void, std::string> add_user_item(UserId user_id, int item_id, int quantity);
+  tl::expected<void, std::string> sub_user_item(UserId user_id, int item_id, int quantity);
+
+  // Returns the quantity of the item for the user. std::nullopt can be treated as 0
+  std::optional<int> get_user_items_quantity(UserId user_id, int item_id);
 
   // List all user items
-  tl::expected<std::vector<std::pair<std::string, int>>, std::string> view_items(UserId user_id);
+  tl::expected<std::vector<std::pair<std::string, int>>, std::string> view_user_items(UserId user_id);
 
-  // Place a sell order
-  tl::expected<ItemOperationInfo, std::string> place_sell_order(SellOrderType order_type, UserId user_id,
-                                                                std::string_view item_name, int quantity, int price,
-                                                                int64_t unix_expiration_time);
+  struct SellOrder {
+    UserId seller_id;
+    int item_id;
+    int quantity;
+    int price;
+    int64_t unix_expiration_time;
 
-  // View all sell orders
-  tl::expected<std::vector<SellOrder>, std::string> view_sell_orders();
+    // Stores an information about the order type and state:
+    // - For immediate orders, buyer_id is equal to the seller_id
+    // - For auction orders, buyer_id is null untill someone places a bid
+    std::optional<UserId> buyer_id;
+  };
+  tl::expected<void, std::string> create_sell_order(SellOrder order);
 
-  // Cancel expired sell orders
-  tl::expected<std::vector<SellOrderExecutionInfo>, std::string> process_expired_sell_orders(int64_t unix_now);
+  tl::expected<void, std::string> delete_sell_order(int order_id);
 
-  // Execute a buy order
-  tl::expected<SellOrderExecutionInfo, std::string> execute_immediate_sell_order(UserId buyer_id, int sell_order_id);
-
-  // Place a bid on an auction sell order. The order will be executed when order expiration time is reached
-  tl::expected<void, std::string> place_bid_on_auction_sell_order(UserId buyer_id, int sell_order_id, int bid);
-
-private:
-  tl::expected<int, std::string> get_item_id(std::string_view item_name);
-  // Returns the quantity of the item for the user. std::nullopt can be treated as 0
-  std::optional<int> get_items_quantity(UserId user_id, int item_id);
-
-  tl::expected<void, std::string> deposit_inner(UserId user_id, int item_id, int quantity);
-  tl::expected<void, std::string> withdraw_inner(UserId user_id, int item_id, int quantity);
+  tl::expected<void, std::string> update_sell_order_buyer(int order_id, UserId buyer_id, int price);
 
   // Inner struct that represents a sell order
   struct SellOrderInnerInfo {
@@ -141,4 +84,54 @@ private:
     SellOrderType type() const { return buyer_id == seller_id ? SellOrderType::Immediate : SellOrderType::Auction; }
   };
   std::optional<SellOrderInnerInfo> get_sell_order_info(int sell_order_id);
+
+  // View all sell orders
+  tl::expected<std::vector<SellOrderInfo>, std::string> view_sell_orders();
+
+  // Cancel expired sell orders
+  tl::expected<std::vector<SellOrderExecutionInfo>, std::string> process_expired_sell_orders(int64_t unix_now);
+
+  // RAII wrapper for transaction that will execute Storage::rollback_transaction() on destruction if
+  // TransactionGuard::commit() wasn't called
+  class TransactionGuard final {
+    // pointer to the storage is used to check if the transaction is still active
+    Storage * storage;
+
+  public:
+    TransactionGuard(Storage * storage) : storage(storage) {}
+    ~TransactionGuard() {
+      if (storage) {
+        storage->rollback_transaction();
+      }
+    }
+
+    TransactionGuard(TransactionGuard const &) = delete;
+    TransactionGuard & operator=(TransactionGuard const &) = delete;
+    TransactionGuard(TransactionGuard && other) noexcept : storage(other.storage) { other.storage = nullptr; }
+    TransactionGuard & operator=(TransactionGuard && other) noexcept {
+      // move and swap idiom via local varialbe
+      TransactionGuard local = std::move(other);
+      std::swap(storage, local.storage);
+      return *this;
+    }
+
+    // Commits the transaction
+    tl::expected<void, std::string> commit() {
+      if (!storage) {
+        return tl::make_unexpected("Transaction already committed");
+      }
+      auto result = storage->commit_transaction();
+      if (result) {
+        storage = nullptr;
+      }
+      return result;
+    }
+  };
+
+  // Begins a transaction. If TransactionGuard is destroyed without calling `commit`, the transaction is rolled back
+  tl::expected<TransactionGuard, std::string> begin_transaction();
+
+private:
+  void rollback_transaction();
+  tl::expected<void, std::string> commit_transaction();
 };

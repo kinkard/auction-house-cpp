@@ -1,7 +1,9 @@
 #pragma once
 
+#include "auction_service.hpp"
 #include "storage.hpp"
 #include "transaction_log.hpp"
+#include "user_service.hpp"
 
 #include <asio/ip/tcp.hpp>
 
@@ -11,7 +13,14 @@
 // Shared state between all users and items
 struct SharedState {
   // Persistent storage for users and items
-  Storage storage;
+  std::shared_ptr<Storage> storage;
+
+  // Core logic for all operations with items
+  AuctionService auction_service;
+
+  // Core logic for all operations with users
+  UserService user_service;
+
   // Transaction log for all operations with items
   TransactionLog transaction_log;
 
