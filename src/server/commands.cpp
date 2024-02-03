@@ -1,4 +1,5 @@
 #include "commands.hpp"
+#include "shared_state.hpp"
 
 #include <fmt/chrono.h>
 #include <fmt/format.h>
@@ -8,67 +9,6 @@
 #include <chrono>
 #include <optional>
 #include <string>
-
-std::unordered_map<std::string_view, CommandsProcessor::CommandHandlerType> const CommandsProcessor::commands = {
-  { "ping", &CommandsProcessor::ping },
-  { "whoami", &CommandsProcessor::whoami },
-  { "help", &CommandsProcessor::help },
-  { "deposit", &CommandsProcessor::deposit },
-  { "withdraw", &CommandsProcessor::withdraw },
-  { "view_items", &CommandsProcessor::view_items },
-  { "sell", &CommandsProcessor::sell },
-  { "buy", &CommandsProcessor::buy },
-  { "view_sell_orders", &CommandsProcessor::view_sell_orders },
-};
-
-namespace {
-// Parses the last word as a quantity and if failed - uses the whole string as an item name
-// Examples:
-// - "arrow 5" -> {"arrow", 5}
-// - "holy sword 1" -> {"holy sword", 1}
-// - "arrow" -> {"arrow", 1}
-std::pair<std::string_view, int> parse_item_name_and_count(std::string_view args) noexcept {
-  // first, parse last word as a quantity and if failed - use the whole string as an item name
-  int quantity = 1;
-  std::size_t const space_pos = args.rfind(' ');
-  if (space_pos != std::string_view::npos) {
-    std::string_view const count_str = args.substr(space_pos + 1);
-    auto const [_, ec] = std::from_chars(count_str.data(), count_str.data() + count_str.size(), quantity);
-    if (ec == std::errc()) {
-      args = args.substr(0, space_pos);
-    }
-  }
-  return { args, quantity };
-}
-
-// Parses '<item_name> [<quantity>] <price>' where quantity is optional and defaults to 1
-std::optional<std::tuple<std::string_view, int, int>> parse_sell_order(std::string_view args) noexcept {
-  // first, find the price
-  std::size_t const space_pos = args.rfind(' ');
-  if (space_pos == std::string_view::npos) {
-    return std::nullopt;
-  }
-  std::string_view const price_str = args.substr(space_pos + 1);  // price is the last word
-  int price = 0;
-  auto const [_, ec] = std::from_chars(price_str.data(), price_str.data() + price_str.size(), price);
-  if (ec != std::errc()) {
-    return std::nullopt;
-  }
-  args = args.substr(0, space_pos);
-
-  auto const [item_name, quantity] = parse_item_name_and_count(args);
-  return { { item_name, quantity, price } };
-}
-
-// Takes the first word as a command name and the rest as arguments
-std::pair<std::string_view, std::string_view> parse_command(std::string_view request) noexcept {
-  std::size_t const space_pos = request.find(' ');
-  if (space_pos == std::string_view::npos) {
-    return { request, {} };
-  }
-  return { request.substr(0, space_pos), request.substr(space_pos + 1) };
-}
-}  // namespace
 
 namespace fmt {
 template <>
@@ -96,28 +36,38 @@ struct formatter<SellOrder> {
     std::string_view const order_type_str = order.type == SellOrderType::Auction ? "on auction " : "";
 
     if (order.quantity == 1) {
-      return ::fmt::format_to(ctx.out(), "#{}: {} is selling a {} for {} funds {}until {}", order.id,
-                                   order.seller_name,
-                       order.item_name, order.price, order_type_str, order.expiration_time);
+      return ::fmt::format_to(ctx.out(), "#{}: {} is selling a {} for {} funds {}until {}", order.id, order.seller_name,
+                              order.item_name, order.price, order_type_str, order.expiration_time);
     } else {
       return ::fmt::format_to(ctx.out(), "#{}: {} is selling {} {}(s) for {} funds {}until {}", order.id,
-                              order.seller_name,
-                       order.quantity, order.item_name, order.price, order_type_str, order.expiration_time);
+                              order.seller_name, order.quantity, order.item_name, order.price, order_type_str,
+                              order.expiration_time);
     }
   }
 };
 }  // namespace fmt
 
-std::string CommandsProcessor::ping(std::string_view) {
-  return "pong";
+namespace {
+// Parses the last word as a quantity and if failed - uses the whole string as an item name
+// Examples:
+// - "arrow 5" -> {"arrow", 5}
+// - "holy sword 1" -> {"holy sword", 1}
+// - "arrow" -> {"arrow", 1}
+std::pair<std::string_view, int> parse_item_name_and_count(std::string_view args) noexcept {
+  // first, parse last word as a quantity and if failed - use the whole string as an item name
+  int quantity = 1;
+  std::size_t const space_pos = args.rfind(' ');
+  if (space_pos != std::string_view::npos) {
+    std::string_view const count_str = args.substr(space_pos + 1);
+    auto const [_, ec] = std::from_chars(count_str.data(), count_str.data() + count_str.size(), quantity);
+    if (ec == std::errc()) {
+      args = args.substr(0, space_pos);
+    }
+  }
+  return { args, quantity };
 }
 
-std::string CommandsProcessor::whoami(std::string_view) {
-  return user.username;
-}
-
-std::string CommandsProcessor::help(std::string_view) {
-  constexpr std::string_view help_str = R"(Available commands:
+constexpr std::string_view kHelpString = R"(Available commands:
 - whoami: Displays the username of the current user
 - ping: Replies 'pong'
 - help: Prints this help message about all available commands
@@ -139,13 +89,39 @@ std::string CommandsProcessor::help(std::string_view) {
   - bid - places a bid on a auction sell order
   
 Usage: <command> [<args>], where `[]` annotates optional argumet(s))";
+}  // namespace
 
-  return std::string(help_str);
+namespace commands {
+
+std::optional<Ping> Ping::parse(std::string_view) {
+  return Ping{};
 }
 
-std::string CommandsProcessor::deposit(std::string_view args) {
-  auto const [item_name, quantity] = parse_item_name_and_count(args);
+std::string Ping::execute(User const &, std::shared_ptr<SharedState> const &) {
+  return "pong";
+}
 
+std::optional<Whoami> Whoami::parse(std::string_view) {
+  return Whoami{};
+}
+
+std::string Whoami::execute(User const & user, std::shared_ptr<SharedState> const &) {
+  return user.username;
+}
+
+std::optional<Help> Help::parse(std::string_view) {
+  return Help{};
+}
+
+std::string Help::execute(User const &, std::shared_ptr<SharedState> const &) {
+  return std::string(kHelpString);
+}
+std::optional<Deposit> Deposit::parse(std::string_view args) {
+  auto const [item_name, quantity] = parse_item_name_and_count(args);
+  return Deposit{ .item_name = item_name, .quantity = quantity };
+}
+
+std::string Deposit::execute(User const & user, std::shared_ptr<SharedState> const & shared_state) {
   auto result = shared_state->storage.deposit(user.id, item_name, quantity);
   if (!result) {
     return fmt::format("Failed to deposit {} {}(s) with error: {}", quantity, item_name, result.error());
@@ -155,9 +131,12 @@ std::string CommandsProcessor::deposit(std::string_view args) {
   return fmt::format("Successfully deposited {} {}(s)", quantity, item_name);
 }
 
-std::string CommandsProcessor::withdraw(std::string_view args) {
+std::optional<Withdraw> Withdraw::parse(std::string_view args) {
   auto const [item_name, quantity] = parse_item_name_and_count(args);
+  return Withdraw{ .item_name = item_name, .quantity = quantity };
+}
 
+std::string Withdraw::execute(User const & user, std::shared_ptr<SharedState> const & shared_state) {
   auto result = shared_state->storage.withdraw(user.id, item_name, quantity);
   if (!result) {
     return fmt::format("Failed to withdraw {} {}(s) with error: {}", quantity, item_name, result.error());
@@ -167,7 +146,11 @@ std::string CommandsProcessor::withdraw(std::string_view args) {
   return fmt::format("Successfully withdrawn {} {}(s)", quantity, item_name);
 }
 
-std::string CommandsProcessor::view_items(std::string_view) {
+std::optional<ViewItems> ViewItems::parse(std::string_view) {
+  return ViewItems{};
+}
+
+std::string ViewItems::execute(User const & user, std::shared_ptr<SharedState> const & shared_state) {
   auto result = shared_state->storage.view_items(user.id);
   if (!result) {
     return fmt::format("Failed to view items with error: {}", result.error());
@@ -175,18 +158,10 @@ std::string CommandsProcessor::view_items(std::string_view) {
   return fmt::format("Items: [{}]", fmt::join(result.value(), ", "));
 }
 
-// args should be in the format "[immediate|auction] <item_name> [quantity] <price>".
-// Price is mandatory, quantity is optional and defaults to 1.
-// Examples:
-// - "arrow 5 10" -> {"arrow", .quantity=5, .price=10, .type=Immediate}
-// - "holy sword 1 100" -> {"holy sword", .quantity=1, .price=100, .type=Immediate}
-// - "arrow 10" -> {"arrow", .quantity=1, .price=10, .type=Immediate}
-// - "immidiate arrow 10 5" -> {"arrow", .quantity=10, .price=5, .type=Immediate}
-// - "auction arrow 10 5" -> {"arrow", .quantity=10, .price=5, .type=Auction}
-std::string CommandsProcessor::sell(std::string_view args) {
+std::optional<Sell> Sell::parse(std::string_view args) {
   // parse optional order type, if none - use immediate
   SellOrderType order_type = SellOrderType::Immediate;
-  std::size_t const space_pos = args.find(' ');
+  std::size_t space_pos = args.find(' ');
   if (space_pos != std::string_view::npos) {
     if (auto const parsed = parse_SellOrderType(args.substr(0, space_pos))) {
       order_type = *parsed;
@@ -194,13 +169,25 @@ std::string CommandsProcessor::sell(std::string_view args) {
     }
   }
 
-  auto const sell_order = parse_sell_order(args);
-  if (!sell_order) {
-    return "Failed to place sell order. Expected: 'sell [immediate|auction] <item_name> [<quantity>] <price>'. "
-           "Default type is 'immediate' and default quantity is 1";
+  // then, find the price - it should be the last word
+  space_pos = args.rfind(' ');
+  if (space_pos == std::string_view::npos) {
+    return std::nullopt;
   }
-  auto const & [item_name, quantity, price] = *sell_order;
+  std::string_view const price_str = args.substr(space_pos + 1);
+  int price = 0;
+  auto const [_, ec] = std::from_chars(price_str.data(), price_str.data() + price_str.size(), price);
+  if (ec != std::errc()) {
+    return std::nullopt;
+  }
+  args = args.substr(0, space_pos);
 
+  auto const [item_name, quantity] = parse_item_name_and_count(args);
+
+  return Sell{ .order_type = order_type, .item_name = item_name, .quantity = quantity, .price = price };
+}
+
+std::string Sell::execute(User const & user, std::shared_ptr<SharedState> const & shared_state) {
   // expiration time is now + 5min
   constexpr auto const order_lifetime = std::chrono::minutes(5);
   int64_t const unix_expiration_time = (std::chrono::seconds(std::time(NULL)) + order_lifetime).count();
@@ -216,7 +203,7 @@ std::string CommandsProcessor::sell(std::string_view args) {
   return fmt::format("Successfully placed {} sell order for {} {}(s)", order_type, quantity, item_name);
 }
 
-std::string CommandsProcessor::buy(std::string_view args) {
+std::optional<Buy> Buy::parse(std::string_view args) {
   std::optional<int> bid;
   std::size_t const space_pos = args.find(' ');
   if (space_pos != std::string_view::npos) {
@@ -232,9 +219,12 @@ std::string CommandsProcessor::buy(std::string_view args) {
   int sell_order_id = 1;
   auto const [_, ec] = std::from_chars(args.data(), args.data() + args.size(), sell_order_id);
   if (ec != std::errc()) {
-    return "Failed to buy. Expected: 'buy <sell_order_id> [<bid>]'";
+    return std::nullopt;
   }
+  return Buy{ .sell_order_id = sell_order_id, .bid = bid };
+}
 
+std::string Buy::execute(User const & user, std::shared_ptr<SharedState> const & shared_state) {
   if (bid) {
     auto result = shared_state->storage.place_bid_on_auction_sell_order(user.id, sell_order_id, *bid);
     if (!result) {
@@ -256,7 +246,11 @@ std::string CommandsProcessor::buy(std::string_view args) {
   }
 }
 
-std::string CommandsProcessor::view_sell_orders(std::string_view) {
+std::optional<ViewSellOrders> ViewSellOrders::parse(std::string_view) {
+  return ViewSellOrders{};
+}
+
+std::string ViewSellOrders::execute(User const &, std::shared_ptr<SharedState> const & shared_state) {
   auto result = shared_state->storage.view_sell_orders();
   if (!result) {
     return fmt::format("Failed to view sell orders with error: {}", result.error());
@@ -268,11 +262,4 @@ std::string CommandsProcessor::view_sell_orders(std::string_view) {
   return output;
 }
 
-std::string CommandsProcessor::process_request(std::string_view request) {
-  auto const [command, args] = parse_command(request);
-  if (auto const it = commands.find(command); it != commands.end()) {
-    return std::invoke(it->second, this, args);
-  }
-  auto help_str = help({});
-  return fmt::format("Failed to execute unknown command '{}'. {}", command, help_str);
-}
+}  // namespace commands

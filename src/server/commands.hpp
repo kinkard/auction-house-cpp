@@ -1,41 +1,88 @@
 #pragma once
 
-#include "shared_state.hpp"
+#include "storage.hpp"
 
-struct CommandsProcessor final {
-  User user;
-  std::shared_ptr<SharedState> shared_state;
+#include <optional>
+#include <string_view>
 
-private:
-  using CommandHandlerType = std::string (CommandsProcessor::*)(std::string_view);
-  static std::unordered_map<std::string_view, CommandHandlerType> const commands;
+struct SharedState;
 
-public:
-  CommandsProcessor(User user, std::shared_ptr<SharedState> shared_state)
-      : user(std::move(user)), shared_state(std::move(shared_state)) {}
+namespace commands {
 
-  // parses and executes a command
-  std::string process_request(std::string_view request);
-
-private:
-  // responsds with "pong"
-  std::string ping(std::string_view args);
-  // responds with username of the current user
-  std::string whoami(std::string_view args);
-  // prints help message with all available commands and their description
-  std::string help(std::string_view args);
-
-  // deposits an item with optional quantity
-  std::string deposit(std::string_view args);
-  // withdraws an item with optional quantity
-  std::string withdraw(std::string_view args);
-  // lists all items in the inventory for the current user
-  std::string view_items(std::string_view);
-
-  // places a sell order
-  std::string sell(std::string_view args);
-  // executes immediate sell order or places a bid on an auction sell order
-  std::string buy(std::string_view args);
-  // lists all sell orders from all users
-  std::string view_sell_orders(std::string_view args);
+// responsds with "pong"
+struct Ping {
+  static std::optional<Ping> parse(std::string_view);
+  std::string execute(User const &, std::shared_ptr<SharedState> const &);
 };
+
+// responds with username of the current user
+struct Whoami {
+  static std::optional<Whoami> parse(std::string_view);
+  std::string execute(User const & user, std::shared_ptr<SharedState> const &);
+};
+
+// prints help message with all available commands and their description
+struct Help {
+  static std::optional<Help> parse(std::string_view);
+  std::string execute(User const &, std::shared_ptr<SharedState> const &);
+};
+
+// deposits an item with optional quantity
+struct Deposit {
+  std::string_view item_name;
+  int quantity;
+
+  static std::optional<Deposit> parse(std::string_view args);
+  std::string execute(User const & user, std::shared_ptr<SharedState> const & shared_state);
+};
+
+// withdraws an item with optional quantity
+struct Withdraw {
+  std::string_view item_name;
+  int quantity;
+
+  static std::optional<Withdraw> parse(std::string_view args);
+  std::string execute(User const & user, std::shared_ptr<SharedState> const & shared_state);
+};
+
+// lists all items in the inventory for the current user
+struct ViewItems {
+  static std::optional<ViewItems> parse(std::string_view);
+  std::string execute(User const & user, std::shared_ptr<SharedState> const & shared_state);
+};
+
+// places a sell order
+struct Sell {
+  SellOrderType order_type;
+  std::string_view item_name;
+  int quantity;
+  int price;
+
+  // args should be in the format "[immediate|auction] <item_name> [quantity] <price>".
+  // Price is mandatory, quantity is optional and defaults to 1.
+  // Examples:
+  // - "arrow 5 10" -> {"arrow", .quantity=5, .price=10, .type=Immediate}
+  // - "holy sword 1 100" -> {"holy sword", .quantity=1, .price=100, .type=Immediate}
+  // - "arrow 10" -> {"arrow", .quantity=1, .price=10, .type=Immediate}
+  // - "immidiate arrow 10 5" -> {"arrow", .quantity=10, .price=5, .type=Immediate}
+  // - "auction arrow 10 5" -> {"arrow", .quantity=10, .price=5, .type=Auction}
+  static std::optional<Sell> parse(std::string_view args);
+  std::string execute(User const & user, std::shared_ptr<SharedState> const & shared_state);
+};
+
+// executes immediate sell order or places a bid on an auction sell order
+struct Buy {
+  int sell_order_id;
+  std::optional<int> bid;
+
+  static std::optional<Buy> parse(std::string_view args);
+  std::string execute(User const & user, std::shared_ptr<SharedState> const & shared_state);
+};
+
+// lists all sell orders from all users
+struct ViewSellOrders {
+  static std::optional<ViewSellOrders> parse(std::string_view);
+  std::string execute(User const &, std::shared_ptr<SharedState> const & shared_state);
+};
+
+}  // namespace commands
