@@ -210,10 +210,12 @@ std::optional<Buy> Buy::parse(std::string_view args) {
     std::string_view const bid_str = args.substr(space_pos + 1);
     int parsed = 0;
     auto const [_, ec] = std::from_chars(bid_str.data(), bid_str.data() + bid_str.size(), parsed);
-    if (ec == std::errc()) {
-      bid = parsed;
-      args = args.substr(0, space_pos);
+    if (ec != std::errc()) {
+      return std::nullopt;
     }
+
+    bid = parsed;
+    args = args.substr(0, space_pos);
   }
 
   int sell_order_id = 1;
