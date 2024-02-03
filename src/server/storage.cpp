@@ -133,15 +133,7 @@ tl::expected<UserId, std::string> Storage::create_user(std::string_view username
   if (!user_inserted) {
     return tl::make_unexpected(std::move(user_inserted.error()));
   }
-  UserId user_id = this->_db.last_insert_rowid();
-
-  auto insert_result = this->_db.execute("INSERT INTO user_items (user_id, item_id, quantity) VALUES (?1, ?2, 0)",
-                                         user_id, this->_funds_item_id);
-  if (!insert_result) {
-    return tl::make_unexpected(std::move(insert_result.error()));
-  }
-
-  return user_id;
+  return this->_db.last_insert_rowid();
 }
 
 tl::expected<std::vector<std::pair<std::string, int>>, std::string> Storage::view_user_items(UserId user_id) {
