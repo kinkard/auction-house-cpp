@@ -34,6 +34,7 @@ public:
   // Place a bid on an auction sell order. The order will be executed when order expiration time is reached
   tl::expected<void, std::string> place_bid_on_auction_sell_order(UserId buyer_id, int sell_order_id, int bid);
 
-  // Cancel expired sell orders
-  tl::expected<std::vector<SellOrderExecutionInfo>, std::string> process_expired_sell_orders(int64_t unix_now);
+private:
+  tl::expected<void, std::string> add_funds(UserId user_id, int quantity);
+  tl::expected<void, std::string> sub_funds(UserId user_id, int quantity);
 };

@@ -76,10 +76,9 @@ tl::expected<ItemOperationInfo, std::string> AuctionService::place_sell_order(Se
 
       // Then we want to take a fee from the seller
       .and_then([&](int item_id) {
-        return storage->sub_user_item(seller_id, storage->funds_item_id(), fee)
-            .map([&]() { return item_id; })
-            .map_error(
-                [&](auto &&) { return fmt::format("Not enough funds to pay {} funds fee (which is 5% + 1)", fee); });
+        return sub_funds(seller_id, fee).map([&]() { return item_id; }).map_error([&](auto &&) {
+          return fmt::format("Not enough funds to pay {} funds fee (which is 5% + 1)", fee);
+        });
       })
 
       // Second, insert the order
@@ -126,10 +125,10 @@ tl::expected<SellOrderExecutionInfo, std::string> AuctionService::execute_immedi
   }
 
   // First, deduce funds from the buyer
-  return storage->sub_user_item(buyer_id, storage->funds_item_id(), order->price)
+  return sub_funds(buyer_id, order->price)
       .map_error([&](auto &&) { return fmt::format("Not enough funds to buy"); })
       // Second, add funds to the seller
-      .and_then([&]() { return storage->add_user_item(order->seller_id, storage->funds_item_id(), order->price); })
+      .and_then([&]() { return add_funds(order->seller_id, order->price); })
       // Third, transfer item to the buyer
       .and_then([&]() { return storage->add_user_item(buyer_id, order->item_id, order->quantity); })
       // Finally, delete the order
@@ -163,7 +162,7 @@ tl::expected<void, std::string> AuctionService::place_bid_on_auction_sell_order(
 
   if (order->buyer_id) {
     // If there is already a bid, then we should return funds to the previous buyer
-    auto return_funds_result = storage->add_user_item(*order->buyer_id, storage->funds_item_id(), order->price);
+    auto return_funds_result = add_funds(*order->buyer_id, order->price);
     if (!return_funds_result) {
       return tl::make_unexpected(
           fmt::format("Failed to return funds to the previous buyer: {}", return_funds_result.error()));
@@ -171,10 +170,18 @@ tl::expected<void, std::string> AuctionService::place_bid_on_auction_sell_order(
   }
 
   // First, deduce funds from the buyer
-  return storage->sub_user_item(buyer_id, storage->funds_item_id(), bid)
+  return sub_funds(buyer_id, bid)
       .map_error([&](auto &&) { return fmt::format("Not enough funds to buy"); })
       // Second, update order price and buyer_id
       .and_then([&]() { return storage->update_sell_order_buyer(sell_order_id, buyer_id, bid); })
       // And of course, commit the transaction
       .and_then([&]() { return transaction_guard->commit(); });
+}
+
+tl::expected<void, std::string> AuctionService::add_funds(UserId user_id, int quantity) {
+  return storage->add_user_item(user_id, storage->funds_item_id(), quantity);
+}
+
+tl::expected<void, std::string> AuctionService::sub_funds(UserId user_id, int quantity) {
+  return storage->sub_user_item(user_id, storage->funds_item_id(), quantity);
 }
