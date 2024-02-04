@@ -10,19 +10,19 @@ namespace commands {
 
 // responsds with "pong"
 struct Ping {
-  static std::optional<Ping> parse(std::string_view);
-  std::string execute(User const &, std::shared_ptr<SharedState> const &);
+  static std::optional<Ping> parse(std::string_view) { return Ping{}; }
+  std::string execute(User const &, std::shared_ptr<SharedState> const &) { return "pong"; }
 };
 
 // responds with username of the current user
 struct Whoami {
-  static std::optional<Whoami> parse(std::string_view);
-  std::string execute(User const & user, std::shared_ptr<SharedState> const &);
+  static std::optional<Whoami> parse(std::string_view) { return Whoami{}; }
+  std::string execute(User const & user, std::shared_ptr<SharedState> const &) { return user.username; }
 };
 
 // prints help message with all available commands and their description
 struct Help {
-  static std::optional<Help> parse(std::string_view);
+  static std::optional<Help> parse(std::string_view) { return Help{}; }
   std::string execute(User const &, std::shared_ptr<SharedState> const &);
 };
 
@@ -46,7 +46,7 @@ struct Withdraw {
 
 // lists all items in the inventory for the current user
 struct ViewItems {
-  static std::optional<ViewItems> parse(std::string_view);
+  static std::optional<ViewItems> parse(std::string_view) { return ViewItems{}; }
   std::string execute(User const & user, std::shared_ptr<SharedState> const & shared_state);
 };
 
@@ -80,7 +80,7 @@ struct Buy {
 
 // lists all sell orders from all users
 struct ViewSellOrders {
-  static std::optional<ViewSellOrders> parse(std::string_view);
+  static std::optional<ViewSellOrders> parse(std::string_view) { return ViewSellOrders{}; }
   std::string execute(User const &, std::shared_ptr<SharedState> const & shared_state);
 };
 

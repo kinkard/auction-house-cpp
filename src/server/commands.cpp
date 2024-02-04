@@ -93,29 +93,10 @@ Usage: <command> [<args>], where `[]` annotates optional argumet(s))";
 
 namespace commands {
 
-std::optional<Ping> Ping::parse(std::string_view) {
-  return Ping{};
-}
-
-std::string Ping::execute(User const &, std::shared_ptr<SharedState> const &) {
-  return "pong";
-}
-
-std::optional<Whoami> Whoami::parse(std::string_view) {
-  return Whoami{};
-}
-
-std::string Whoami::execute(User const & user, std::shared_ptr<SharedState> const &) {
-  return user.username;
-}
-
-std::optional<Help> Help::parse(std::string_view) {
-  return Help{};
-}
-
 std::string Help::execute(User const &, std::shared_ptr<SharedState> const &) {
   return std::string(kHelpString);
 }
+
 std::optional<Deposit> Deposit::parse(std::string_view args) {
   auto const [item_name, quantity] = parse_item_name_and_count(args);
   return Deposit{ .item_name = item_name, .quantity = quantity };
@@ -144,10 +125,6 @@ std::string Withdraw::execute(User const & user, std::shared_ptr<SharedState> co
 
   shared_state->transaction_log.save(user.id, "withdrawn", *result);
   return fmt::format("Successfully withdrawn {} {}(s)", quantity, item_name);
-}
-
-std::optional<ViewItems> ViewItems::parse(std::string_view) {
-  return ViewItems{};
 }
 
 std::string ViewItems::execute(User const & user, std::shared_ptr<SharedState> const & shared_state) {
@@ -245,10 +222,6 @@ std::string Buy::execute(User const & user, std::shared_ptr<SharedState> const &
 
     return fmt::format("Successfully executed #{} sell order", sell_order_id);
   }
-}
-
-std::optional<ViewSellOrders> ViewSellOrders::parse(std::string_view) {
-  return ViewSellOrders{};
 }
 
 std::string ViewSellOrders::execute(User const &, std::shared_ptr<SharedState> const & shared_state) {
