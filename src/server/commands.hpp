@@ -1,8 +1,7 @@
 #pragma once
 
-#include "storage.hpp"
+#include "shared_state.hpp"
 
-#include <optional>
 #include <string_view>
 
 struct SharedState;

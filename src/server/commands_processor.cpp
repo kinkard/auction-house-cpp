@@ -2,6 +2,7 @@
 #include "commands.hpp"
 
 #include <utility>
+#include <variant>
 
 namespace {
 
