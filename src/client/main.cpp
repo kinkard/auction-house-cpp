@@ -86,7 +86,7 @@ int main(int argc, char * argv[]) {
     // Graceful shutdown
     asio::signal_set signals(io_context, SIGINT, SIGTERM);
     signals.async_wait([&](auto, auto) {
-      std::cout << "Shutting down..." << std::endl;
+      std::cout << "\nDisconnecting..." << std::endl;
       io_context.stop();
     });
 
