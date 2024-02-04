@@ -51,10 +51,13 @@ awaitable<void> notify_users(std::shared_ptr<SharedState> shared_state) {
     timer.expires_at(timer.expiry() + ch::seconds(1));
 
     while (!shared_state->notifications.empty()) {
-      auto const & [user_id, message] = shared_state->notifications.front();
-      auto it = shared_state->sockets.find(user_id);
-      if (it != shared_state->sockets.end()) {
-        auto const socket = it->second;  // prevent socket from being destroyed while we are writing to it
+      auto const & [user_id, notification] = shared_state->notifications.pop();
+
+      if (auto const it = shared_state->sockets.find(user_id); it != shared_state->sockets.end()) {
+        // prevent socket from being destroyed while we are writing to it
+        auto const socket = it->second;
+        auto message =
+            fmt::format("Your sell order #{} was executed for {}\n", notification.order_id, notification.price);
         try {
           co_await async_write(*socket, asio::buffer(message), use_awaitable);
         } catch (std::exception &) {
@@ -62,7 +65,6 @@ awaitable<void> notify_users(std::shared_ptr<SharedState> shared_state) {
           // `process_user_commands()` will handle this case.
         }
       }
-      shared_state->notifications.pop();
     }
   }
 }
@@ -83,8 +85,8 @@ awaitable<void> process_expired_sell_orders(std::shared_ptr<SharedState> shared_
     }
     for (auto const & order : *result) {
       shared_state->transaction_log.save(order);
-      shared_state->notifications.push(std::make_pair(
-          order.seller_id, fmt::format("Your sell order #{} was executed for {}", order.id, order.price)));
+      shared_state->notifications.push(order.seller_id,
+                                       ExecutedSellOrder{ .order_id = order.id, .price = order.price });
     }
   }
 }

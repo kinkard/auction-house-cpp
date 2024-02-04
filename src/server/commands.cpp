@@ -240,9 +240,8 @@ std::string Buy::execute(User const & user, std::shared_ptr<SharedState> const &
       return fmt::format("Failed to execute #{} sell order with error: {}", sell_order_id, result.error());
     }
     shared_state->transaction_log.save(*result);
-
-    shared_state->notifications.push(std::make_pair(
-        result->seller_id, fmt::format("Your sell order #{} was executed for {}", result->id, result->price)));
+    shared_state->notifications.push(result->seller_id,
+                                     ExecutedSellOrder{ .order_id = result->id, .price = result->price });
 
     return fmt::format("Successfully executed #{} sell order", sell_order_id);
   }
