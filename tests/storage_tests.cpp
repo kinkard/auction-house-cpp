@@ -13,6 +13,14 @@
 uint64_t constexpr expiration_time = 1609459200;
 std::string_view constexpr expiration_time_str = "2021-01-01 00:00";
 
+bool operator==(const UserItemInfo & lha, const UserItemInfo & rha) {
+  return lha.item_name == rha.item_name && lha.quantity == rha.quantity;
+}
+
+std::ostream & operator<<(std::ostream & os, const UserItemInfo & item) {
+  return os << fmt::format("UserItemInfo{{.item_name=\"{}\", .quantity={}}}", item.item_name, item.quantity);
+}
+
 class StorageTest : public ::testing::Test {
 protected:
   void SetUp() override {
@@ -41,22 +49,22 @@ TEST_F(StorageTest, get_or_create_user) {
 TEST_F(StorageTest, funds) {
   auto user = *user_service->login("user1");
   // freshly created user always has 0 funds
-  EXPECT_THAT(*storage->view_user_items(user.id), testing::ElementsAre(std::make_pair("funds", 0)));
+  EXPECT_THAT(*storage->view_user_items(user.id), testing::ElementsAre(UserItemInfo{ "funds", 0 }));
 
   ASSERT_TRUE(auction_service->deposit(user.id, "funds", 10));
-  EXPECT_THAT(*storage->view_user_items(user.id), testing::ElementsAre(std::make_pair("funds", 10)));
+  EXPECT_THAT(*storage->view_user_items(user.id), testing::ElementsAre(UserItemInfo{ "funds", 10 }));
 
   ASSERT_TRUE(auction_service->withdraw(user.id, "funds", 7));
-  EXPECT_THAT(*storage->view_user_items(user.id), testing::ElementsAre(std::make_pair("funds", 3)));
+  EXPECT_THAT(*storage->view_user_items(user.id), testing::ElementsAre(UserItemInfo{ "funds", 3 }));
 
   ASSERT_TRUE(auction_service->withdraw(user.id, "funds", 3));
-  EXPECT_THAT(*storage->view_user_items(user.id), testing::ElementsAre(std::make_pair("funds", 0)));
+  EXPECT_THAT(*storage->view_user_items(user.id), testing::ElementsAre(UserItemInfo{ "funds", 0 }));
 
   ASSERT_TRUE(auction_service->deposit(user.id, "funds", 5));
 
   // get_or_create_user should not create new funds
   user = *user_service->login("user1");
-  EXPECT_THAT(*storage->view_user_items(user.id), testing::ElementsAre(std::make_pair("funds", 5)));
+  EXPECT_THAT(*storage->view_user_items(user.id), testing::ElementsAre(UserItemInfo{ "funds", 5 }));
 
   // withdraw more than we have
   ASSERT_FALSE(auction_service->withdraw(user.id, "funds", 10));
@@ -82,18 +90,18 @@ TEST_F(StorageTest, funds) {
 
   // user1 is still untouched
   user = *user_service->login("user1");
-  EXPECT_THAT(*storage->view_user_items(user.id), testing::ElementsAre(std::make_pair("funds", 5)));
+  EXPECT_THAT(*storage->view_user_items(user.id), testing::ElementsAre(UserItemInfo{ "funds", 5 }));
 
   // user2 has 20 funds
   user = *user_service->login("user2");
-  EXPECT_THAT(*storage->view_user_items(user.id), testing::ElementsAre(std::make_pair("funds", 20)));
+  EXPECT_THAT(*storage->view_user_items(user.id), testing::ElementsAre(UserItemInfo{ "funds", 20 }));
 
   // user3 has 30 funds
   user = *user_service->login("user3");
-  EXPECT_THAT(*storage->view_user_items(user.id), testing::ElementsAre(std::make_pair("funds", 30)));
+  EXPECT_THAT(*storage->view_user_items(user.id), testing::ElementsAre(UserItemInfo{ "funds", 30 }));
 
   user = *user_service->login("foo");
-  EXPECT_THAT(*storage->view_user_items(user.id), testing::ElementsAre(std::make_pair("funds", 0)));
+  EXPECT_THAT(*storage->view_user_items(user.id), testing::ElementsAre(UserItemInfo{ "funds", 0 }));
   ASSERT_TRUE(auction_service->deposit(user.id, "funds", 100500));
   ASSERT_TRUE(auction_service->withdraw(user.id, "funds", 100400));
 }
@@ -101,32 +109,32 @@ TEST_F(StorageTest, funds) {
 TEST_F(StorageTest, items) {
   auto user = *user_service->login("user1");
   // freshly created user always has 0 items
-  EXPECT_THAT(*storage->view_user_items(user.id), testing::ElementsAre(std::make_pair("funds", 0)));
+  EXPECT_THAT(*storage->view_user_items(user.id), testing::ElementsAre(UserItemInfo{ "funds", 0 }));
 
   ASSERT_TRUE(auction_service->deposit(user.id, "item1", 10));
   EXPECT_THAT(*storage->view_user_items(user.id),
-              testing::ElementsAre(std::make_pair("funds", 0), std::make_pair("item1", 10)));
+              testing::ElementsAre(UserItemInfo{ "funds", 0 }, UserItemInfo{ "item1", 10 }));
 
   ASSERT_TRUE(auction_service->deposit(user.id, "item2", 20));
   EXPECT_THAT(
       *storage->view_user_items(user.id),
-      testing::ElementsAre(std::make_pair("funds", 0), std::make_pair("item1", 10), std::make_pair("item2", 20)));
+      testing::ElementsAre(UserItemInfo{ "funds", 0 }, UserItemInfo{ "item1", 10 }, UserItemInfo{ "item2", 20 }));
 
   ASSERT_TRUE(auction_service->withdraw(user.id, "item1", 5));
   EXPECT_THAT(
       *storage->view_user_items(user.id),
-      testing::ElementsAre(std::make_pair("funds", 0), std::make_pair("item1", 5), std::make_pair("item2", 20)));
+      testing::ElementsAre(UserItemInfo{ "funds", 0 }, UserItemInfo{ "item1", 5 }, UserItemInfo{ "item2", 20 }));
 
   ASSERT_TRUE(auction_service->withdraw(user.id, "item2", 10));
   EXPECT_THAT(
       *storage->view_user_items(user.id),
-      testing::ElementsAre(std::make_pair("funds", 0), std::make_pair("item1", 5), std::make_pair("item2", 10)));
+      testing::ElementsAre(UserItemInfo{ "funds", 0 }, UserItemInfo{ "item1", 5 }, UserItemInfo{ "item2", 10 }));
 
   // get_or_create_user should not create new items
   user = *user_service->login("user1");
   EXPECT_THAT(
       *storage->view_user_items(user.id),
-      testing::ElementsAre(std::make_pair("funds", 0), std::make_pair("item1", 5), std::make_pair("item2", 10)));
+      testing::ElementsAre(UserItemInfo{ "funds", 0 }, UserItemInfo{ "item1", 5 }, UserItemInfo{ "item2", 10 }));
 
   // withdraw more than we have
   ASSERT_FALSE(auction_service->withdraw(user.id, "item1", 10));
@@ -169,7 +177,7 @@ TEST_P(GeneralSellOrderTest, negative) {
   ASSERT_TRUE(auction_service->deposit(user.id, "item2", 20));
   EXPECT_THAT(
       *storage->view_user_items(user.id),
-      testing::ElementsAre(std::make_pair("funds", 100), std::make_pair("item1", 10), std::make_pair("item2", 20)));
+      testing::ElementsAre(UserItemInfo{ "funds", 100 }, UserItemInfo{ "item1", 10 }, UserItemInfo{ "item2", 20 }));
   EXPECT_THAT(*storage->view_sell_orders(), testing::IsEmpty());
 
   // try to sell more than we have
@@ -202,14 +210,14 @@ TEST_P(GeneralSellOrderTest, auction_house_fee) {
   ASSERT_TRUE(auction_service->deposit(user.id, "item2", 20));
   EXPECT_THAT(
       *storage->view_user_items(user.id),
-      testing::ElementsAre(std::make_pair("funds", 0), std::make_pair("item1", 10), std::make_pair("item2", 20)));
+      testing::ElementsAre(UserItemInfo{ "funds", 0 }, UserItemInfo{ "item1", 10 }, UserItemInfo{ "item2", 20 }));
 
   // Not enough funds to pay auction house fee
   ASSERT_FALSE(auction_service->place_sell_order(order_type, user.id, "item1", 10, 200, expiration_time));
   // nothing changed
   ASSERT_THAT(
       *storage->view_user_items(user.id),
-      testing::ElementsAre(std::make_pair("funds", 0), std::make_pair("item1", 10), std::make_pair("item2", 20)));
+      testing::ElementsAre(UserItemInfo{ "funds", 0 }, UserItemInfo{ "item1", 10 }, UserItemInfo{ "item2", 20 }));
   EXPECT_THAT(*storage->view_sell_orders(), testing::IsEmpty());
 
   // Now with enough funds
@@ -220,15 +228,15 @@ TEST_P(GeneralSellOrderTest, auction_house_fee) {
 
   ASSERT_TRUE(auction_service->place_sell_order(order_type, user.id, "item1", 10, price, expiration_time));
   EXPECT_THAT(*storage->view_user_items(user.id),
-              testing::ElementsAre(std::make_pair("funds", 100 - fee), std::make_pair("item2", 20)));
+              testing::ElementsAre(UserItemInfo{ "funds", 100 - fee }, UserItemInfo{ "item2", 20 }));
 
   // cancel expired orders
   ASSERT_TRUE(storage->process_expired_sell_orders(expiration_time));
 
   // items are returned but fee is not
   EXPECT_THAT(*storage->view_user_items(user.id),
-              testing::ElementsAre(std::make_pair("funds", 100 - fee), std::make_pair("item1", 10),
-                                   std::make_pair("item2", 20)));
+              testing::ElementsAre(UserItemInfo{ "funds", 100 - fee }, UserItemInfo{ "item1", 10 },
+                                   UserItemInfo{ "item2", 20 }));
 }
 
 TEST_P(GeneralSellOrderTest, positive) {
@@ -240,23 +248,23 @@ TEST_P(GeneralSellOrderTest, positive) {
   ASSERT_TRUE(auction_service->deposit(user.id, "item2", 20));
   EXPECT_THAT(
       *storage->view_user_items(user.id),
-      testing::ElementsAre(std::make_pair("funds", 100), std::make_pair("item1", 10), std::make_pair("item2", 20)));
+      testing::ElementsAre(UserItemInfo{ "funds", 100 }, UserItemInfo{ "item1", 10 }, UserItemInfo{ "item2", 20 }));
 
   for (int i = 1; i < 10; ++i) {
     ASSERT_TRUE(auction_service->place_sell_order(order_type, user.id, "item1", 1, 10 + i, expiration_time));
     EXPECT_THAT(*storage->view_user_items(user.id),
-                testing::ElementsAre(std::make_pair("funds", 100 - i /* fee */), std::make_pair("item1", 10 - i),
-                                     std::make_pair("item2", 20)));
+                testing::ElementsAre(UserItemInfo{ "funds", 100 - i /* fee */ }, UserItemInfo{ "item1", 10 - i },
+                                     UserItemInfo{ "item2", 20 }));
   }
 
   ASSERT_TRUE(auction_service->place_sell_order(order_type, user.id, "item2", 15, 100, expiration_time));
   EXPECT_THAT(
       *storage->view_user_items(user.id),
-      testing::ElementsAre(std::make_pair("funds", 85), std::make_pair("item1", 1), std::make_pair("item2", 5)));
+      testing::ElementsAre(UserItemInfo{ "funds", 85 }, UserItemInfo{ "item1", 1 }, UserItemInfo{ "item2", 5 }));
 
   ASSERT_TRUE(auction_service->place_sell_order(order_type, user.id, "item2", 5, 100, expiration_time + 1));
   EXPECT_THAT(*storage->view_user_items(user.id),
-              testing::ElementsAre(std::make_pair("funds", 79), std::make_pair("item1", 1)));
+              testing::ElementsAre(UserItemInfo{ "funds", 79 }, UserItemInfo{ "item1", 1 }));
 
   EXPECT_THAT(*storage->view_sell_orders(), testing::ElementsAre(
                                                 SellOrderInfo{
@@ -374,13 +382,13 @@ TEST_P(GeneralSellOrderTest, positive) {
   // items are returned but fee is not
   EXPECT_THAT(
       *storage->view_user_items(user.id),
-      testing::ElementsAre(std::make_pair("funds", 79), std::make_pair("item1", 10), std::make_pair("item2", 15)));
+      testing::ElementsAre(UserItemInfo{ "funds", 79 }, UserItemInfo{ "item1", 10 }, UserItemInfo{ "item2", 15 }));
 
   // And finally, cancel the last order
   ASSERT_TRUE(storage->process_expired_sell_orders(expiration_time + 2));
   EXPECT_THAT(
       *storage->view_user_items(user.id),
-      testing::ElementsAre(std::make_pair("funds", 79), std::make_pair("item1", 10), std::make_pair("item2", 20)));
+      testing::ElementsAre(UserItemInfo{ "funds", 79 }, UserItemInfo{ "item1", 10 }, UserItemInfo{ "item2", 20 }));
   EXPECT_THAT(*storage->view_sell_orders(), testing::IsEmpty());
 }
 
@@ -491,7 +499,7 @@ TEST_F(StorageTest, place_bid_on_auction_sell_order) {
 
   // while it is possible to place a bid on auction order
   ASSERT_TRUE(auction_service->place_bid_on_auction_sell_order(buyer.id, 2, 20));
-  EXPECT_THAT(*storage->view_user_items(buyer.id), testing::ElementsAre(std::make_pair("funds", 80)));
+  EXPECT_THAT(*storage->view_user_items(buyer.id), testing::ElementsAre(UserItemInfo{ "funds", 80 }));
 
   // check that bid is placed
   EXPECT_THAT(*storage->view_sell_orders(), testing::ElementsAre(
@@ -528,20 +536,20 @@ TEST_F(StorageTest, place_bid_on_auction_sell_order) {
 
   ASSERT_TRUE(auction_service->place_bid_on_auction_sell_order(another_buyer.id, 2, 21));
 
-  EXPECT_THAT(*storage->view_user_items(seller.id), testing::ElementsAre(std::make_pair("funds", 98)));
-  EXPECT_THAT(*storage->view_user_items(buyer.id), testing::ElementsAre(std::make_pair("funds", 100)));
-  EXPECT_THAT(*storage->view_user_items(another_buyer.id), testing::ElementsAre(std::make_pair("funds", 79)));
+  EXPECT_THAT(*storage->view_user_items(seller.id), testing::ElementsAre(UserItemInfo{ "funds", 98 }));
+  EXPECT_THAT(*storage->view_user_items(buyer.id), testing::ElementsAre(UserItemInfo{ "funds", 100 }));
+  EXPECT_THAT(*storage->view_user_items(another_buyer.id), testing::ElementsAre(UserItemInfo{ "funds", 79 }));
 
   // and finally process expired orders
   ASSERT_TRUE(storage->process_expired_sell_orders(expiration_time));
   // seller receives funds from the buyer and items from the immediate order
   EXPECT_THAT(*storage->view_user_items(seller.id),
-              testing::ElementsAre(std::make_pair("funds", 98 + 21), std::make_pair("item1", 7)));
+              testing::ElementsAre(UserItemInfo{ "funds", 98 + 21 }, UserItemInfo{ "item1", 7 }));
   // buyer receives nothing, his bid was outbid
-  EXPECT_THAT(*storage->view_user_items(buyer.id), testing::ElementsAre(std::make_pair("funds", 100)));
+  EXPECT_THAT(*storage->view_user_items(buyer.id), testing::ElementsAre(UserItemInfo{ "funds", 100 }));
   // another buyer receives items from the auction order
   EXPECT_THAT(*storage->view_user_items(another_buyer.id),
-              testing::ElementsAre(std::make_pair("funds", 79), std::make_pair("item1", 3)));
+              testing::ElementsAre(UserItemInfo{ "funds", 79 }, UserItemInfo{ "item1", 3 }));
 }
 
 TEST_F(StorageTest, execute_immediate_sell_order_ok) {
@@ -551,14 +559,14 @@ TEST_F(StorageTest, execute_immediate_sell_order_ok) {
   ASSERT_TRUE(auction_service->deposit(seller.id, "item2", 20));
   EXPECT_THAT(
       *storage->view_user_items(seller.id),
-      testing::ElementsAre(std::make_pair("funds", 100), std::make_pair("item1", 10), std::make_pair("item2", 20)));
+      testing::ElementsAre(UserItemInfo{ "funds", 100 }, UserItemInfo{ "item1", 10 }, UserItemInfo{ "item2", 20 }));
 
   ASSERT_TRUE(auction_service->place_sell_order(SellOrderType::Immediate, seller.id, "item1", 2, 2, expiration_time));
 
   // sell fee is (5% + 1)
   EXPECT_THAT(
       *storage->view_user_items(seller.id),
-      testing::ElementsAre(std::make_pair("funds", 99), std::make_pair("item1", 8), std::make_pair("item2", 20)));
+      testing::ElementsAre(UserItemInfo{ "funds", 99 }, UserItemInfo{ "item1", 8 }, UserItemInfo{ "item2", 20 }));
 
   ASSERT_TRUE(auction_service->place_sell_order(SellOrderType::Immediate, seller.id, "item1", 3, 3, expiration_time));
   ASSERT_TRUE(auction_service->place_sell_order(SellOrderType::Immediate, seller.id, "item1", 4, 4, expiration_time));
@@ -568,7 +576,7 @@ TEST_F(StorageTest, execute_immediate_sell_order_ok) {
   ASSERT_TRUE(auction_service->place_sell_order(SellOrderType::Immediate, seller.id, "item2", 10, 10, expiration_time));
   ASSERT_TRUE(auction_service->place_sell_order(SellOrderType::Immediate, seller.id, "item2", 5, 15, expiration_time));
 
-  EXPECT_THAT(*storage->view_user_items(seller.id), testing::ElementsAre(std::make_pair("funds", 93)));
+  EXPECT_THAT(*storage->view_user_items(seller.id), testing::ElementsAre(UserItemInfo{ "funds", 93 }));
 
   auto buyer = *user_service->login("buyer");
   ASSERT_TRUE(auction_service->deposit(buyer.id, "funds", 20));
@@ -578,6 +586,6 @@ TEST_F(StorageTest, execute_immediate_sell_order_ok) {
 
   // check items and funds
   EXPECT_THAT(*storage->view_user_items(buyer.id),
-              testing::ElementsAre(std::make_pair("funds", 16), std::make_pair("item1", 1)));
-  EXPECT_THAT(*storage->view_user_items(seller.id), testing::ElementsAre(std::make_pair("funds", 97)));
+              testing::ElementsAre(UserItemInfo{ "funds", 16 }, UserItemInfo{ "item1", 1 }));
+  EXPECT_THAT(*storage->view_user_items(seller.id), testing::ElementsAre(UserItemInfo{ "funds", 97 }));
 }

@@ -10,6 +10,11 @@ struct User {
   std::string username;
 };
 
+struct UserItemInfo {
+  std::string item_name;
+  int quantity;
+};
+
 enum class SellOrderType : int {
   // Order will be immediately executed if there is a matching buy order
   Immediate = 1,

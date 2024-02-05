@@ -51,7 +51,7 @@ public:
   std::optional<int> get_user_items_quantity(UserId user_id, int item_id);
 
   // List all user items
-  tl::expected<std::vector<std::pair<std::string, int>>, std::string> view_user_items(UserId user_id);
+  tl::expected<std::vector<UserItemInfo>, std::string> view_user_items(UserId user_id);
 
   struct SellOrder {
     UserId seller_id;

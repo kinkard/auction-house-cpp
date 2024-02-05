@@ -1,11 +1,25 @@
 #include "commands.hpp"
 #include "shared_state.hpp"
+#include "types.hpp"
 
 #include <fmt/ranges.h>
 
 #include <charconv>
 
 namespace fmt {
+template <>
+struct formatter<UserItemInfo> {
+  template <typename ParseContext>
+  constexpr auto parse(ParseContext & ctx) {
+    return ctx.begin();
+  }
+
+  template <typename FormatContext>
+  auto format(const UserItemInfo & item_info, FormatContext & ctx) const {
+    return ::fmt::format_to(ctx.out(), "(\"{}\", {})", item_info.item_name, item_info.quantity);
+  }
+};
+
 template <>
 struct formatter<SellOrderType> {
   template <typename ParseContext>

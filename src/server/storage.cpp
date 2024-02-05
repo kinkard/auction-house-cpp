@@ -136,20 +136,20 @@ tl::expected<UserId, std::string> Storage::create_user(std::string_view username
   return this->_db.last_insert_rowid();
 }
 
-tl::expected<std::vector<std::pair<std::string, int>>, std::string> Storage::view_user_items(UserId user_id) {
+tl::expected<std::vector<UserItemInfo>, std::string> Storage::view_user_items(UserId user_id) {
   return this->_db
       .query(
           "SELECT items.name, user_items.quantity FROM user_items "
           "INNER JOIN items ON user_items.item_id = items.id "
           "WHERE user_items.user_id = ?1",
           user_id)
-      .and_then([&](auto select) -> tl::expected<std::vector<std::pair<std::string, int>>, std::string> {
-        std::vector<std::pair<std::string, int>> items;
+      .and_then([&](auto select) -> tl::expected<std::vector<UserItemInfo>, std::string> {
+        std::vector<UserItemInfo> items;
         int rc;
         while ((rc = sqlite3_step(select.inner)) == SQLITE_ROW) {
           std::string item_name = reinterpret_cast<char const *>(sqlite3_column_text(select.inner, 0));
           int quantity = sqlite3_column_int(select.inner, 1);
-          items.emplace_back(std::move(item_name), quantity);
+          items.push_back(UserItemInfo{ .item_name = std::move(item_name), .quantity = quantity });
         }
         if (rc != SQLITE_DONE) {
           return tl::make_unexpected(fmt::format("Failed to execute SQL statement: {}", sqlite3_errstr(rc)));
