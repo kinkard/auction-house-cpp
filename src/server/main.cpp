@@ -14,7 +14,6 @@
 #include <fmt/format.h>
 
 #include <cstring>
-#include <string_view>
 
 using asio::awaitable;
 using asio::co_spawn;

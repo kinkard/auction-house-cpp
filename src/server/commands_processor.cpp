@@ -1,6 +1,8 @@
 #include "commands_processor.hpp"
 #include "commands.hpp"
 
+#include <fmt/format.h>
+
 #include <utility>
 #include <variant>
 

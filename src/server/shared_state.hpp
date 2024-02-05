@@ -9,7 +9,6 @@
 #include <asio/ip/tcp.hpp>
 
 #include <memory>
-#include <queue>
 
 // Shared state between all users and items
 struct SharedState {

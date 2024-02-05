@@ -3,7 +3,6 @@
 #include "sqlite3.hpp"
 #include "types.hpp"
 
-#include <fmt/format.h>
 #include <string_view>
 
 // Wrapper around sqlite3 database with core business logic

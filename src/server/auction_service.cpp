@@ -2,6 +2,8 @@
 
 #include "storage.hpp"
 
+#include <fmt/format.h>
+
 int AuctionService::sell_order_fee(int price) const {
   // Fee is 5% of the price + 1 fixed fee
   return price / 20 + 1;
