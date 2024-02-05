@@ -62,7 +62,7 @@ awaitable<void> socket_task(asio::io_context & context, tcp::socket & socket) {
     }
   } catch (std::exception & e) {
     std::cout << "Connection closed by server: " << e.what() << std::endl;
-    // Stop the context to exit the program
+    // Stop the context to abort other tasks (like signal handler) and exit the program
     context.stop();
   }
 }
