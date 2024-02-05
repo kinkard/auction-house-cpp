@@ -52,7 +52,7 @@ void spawn_cli_handler(tcp::socket & socket) {
 }
 
 // Reads data from the socket and prints it to stdout
-awaitable<void> socket_task(tcp::socket & socket) {
+awaitable<void> socket_task(asio::io_context & context, tcp::socket & socket) {
   try {
     while (true) {
       char data[2048];
@@ -61,9 +61,9 @@ awaitable<void> socket_task(tcp::socket & socket) {
       std::cout << "> " << response << std::endl;
     }
   } catch (std::exception & e) {
-    // We do nothing except printing the exception because `socket_task` is the only task in this
-    // program and once it exits, the whole program exits
     std::cout << "Connection closed by server: " << e.what() << std::endl;
+    // Stop the context to exit the program
+    context.stop();
   }
 }
 
@@ -98,7 +98,7 @@ int main(int argc, char * argv[]) {
     asio::connect(socket, endpoint_iterator);
 
     spawn_cli_handler(socket);
-    co_spawn(io_context, socket_task(socket), detached);
+    co_spawn(io_context, socket_task(io_context, socket), detached);
 
     io_context.run();
   } catch (std::exception & e) {
