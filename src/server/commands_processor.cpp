@@ -15,8 +15,9 @@ std::pair<std::string_view, std::string_view> parse_command_name(std::string_vie
   return { request.substr(0, space_pos), request.substr(space_pos + 1) };
 }
 
-using Command = std::variant<commands::Ping, commands::Whoami, commands::Help, commands::Deposit, commands::Withdraw,
-                             commands::ViewItems, commands::Sell, commands::Buy, commands::ViewSellOrders>;
+using Command =
+    std::variant<commands::Ping, commands::Whoami, commands::Quit, commands::Help, commands::Deposit,
+                 commands::Withdraw, commands::ViewItems, commands::Sell, commands::Buy, commands::ViewSellOrders>;
 
 template <typename T>
 std::optional<Command> parse(std::string_view args) {
@@ -30,6 +31,7 @@ std::unordered_map<std::string_view, std::optional<Command> (*)(std::string_view
   { "ping", parse<commands::Ping> },
   { "whoami", parse<commands::Whoami> },
   { "help", parse<commands::Help> },
+  { "quit", parse<commands::Quit> },
   { "deposit", parse<commands::Deposit> },
   { "withdraw", parse<commands::Withdraw> },
   { "view_items", parse<commands::ViewItems> },

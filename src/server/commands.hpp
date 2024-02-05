@@ -84,4 +84,9 @@ struct ViewSellOrders {
   std::string execute(User const &, std::shared_ptr<SharedState> const & shared_state);
 };
 
+struct Quit {
+  static std::optional<Quit> parse(std::string_view) { return Quit{}; }
+  std::string execute(User const &, std::shared_ptr<SharedState> const &);
+};
+
 }  // namespace commands

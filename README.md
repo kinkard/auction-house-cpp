@@ -55,6 +55,7 @@ help
 - whoami: Displays the username of the current user
 - ping: Replies 'pong'
 - help: Prints this help message about all available commands
+- quit: Ask the server to close the connection. Alternatively, the client can just close the connection (e.g. Ctrl+C)
 
 - deposit: Deposits a specified amount into the user's account. Format: 'deposit <item name> [<quantity>]'.
   'fund' is a special item name that can be used to deposit funds into the user's account

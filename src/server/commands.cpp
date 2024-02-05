@@ -71,6 +71,7 @@ constexpr std::string_view kHelpString = R"(Available commands:
 - whoami: Displays the username of the current user
 - ping: Replies 'pong'
 - help: Prints this help message about all available commands
+- quit: Ask the server to close the connection. Alternatively, the client can just close the connection (e.g. Ctrl+C)
 
 - deposit: Deposits a specified amount into the user's account. Format: 'deposit <item name> [<quantity>]'.
   'fund' is a special item name that can be used to deposit funds into the user's account
@@ -234,6 +235,11 @@ std::string ViewSellOrders::execute(User const &, std::shared_ptr<SharedState> c
     output += fmt::format("- {}\n", item);
   }
   return output;
+}
+
+std::string Quit::execute(User const &, std::shared_ptr<SharedState> const &) {
+  // throw an exception to close the connection with the client
+  throw std::runtime_error("Quit command received");
 }
 
 }  // namespace commands
