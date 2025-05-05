@@ -75,7 +75,7 @@ public:
     tl::expected<void, std::string> bind(int index, std::nullopt_t);
 
     template <typename T>
-    tl::expected<void, std::string> bind(int index, const std::optional<T> & value) {
+    tl::expected<void, std::string> bind(int index, std::optional<T> const & value) {
       if (value.has_value()) {
         return bind(index, *value);
       } else {

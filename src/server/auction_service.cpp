@@ -1,5 +1,4 @@
 #include "auction_service.hpp"
-
 #include "storage.hpp"
 
 #include <fmt/format.h>

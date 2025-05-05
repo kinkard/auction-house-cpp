@@ -10,7 +10,6 @@
 #include <asio/ip/tcp.hpp>
 #include <asio/signal_set.hpp>
 #include <asio/write.hpp>
-
 #include <fmt/format.h>
 
 #include <cstring>

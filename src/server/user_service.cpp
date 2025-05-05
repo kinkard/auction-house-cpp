@@ -1,5 +1,4 @@
 #include "user_service.hpp"
-
 #include "storage.hpp"
 
 tl::expected<User, std::string> UserService::login(std::string_view username) {

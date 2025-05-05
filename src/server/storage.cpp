@@ -1,8 +1,7 @@
 #include "storage.hpp"
 
-#include <sqlite3.h>
-
 #include <fmt/format.h>
+#include <sqlite3.h>
 
 tl::expected<Storage, std::string> Storage::open(std::string_view path) {
   // todo: ensure that there is a `\0` at the end of the string

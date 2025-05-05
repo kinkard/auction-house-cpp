@@ -15,7 +15,7 @@ struct formatter<UserItemInfo> {
   }
 
   template <typename FormatContext>
-  auto format(const UserItemInfo & item_info, FormatContext & ctx) const {
+  auto format(UserItemInfo const & item_info, FormatContext & ctx) const {
     return ::fmt::format_to(ctx.out(), "(\"{}\", {})", item_info.item_name, item_info.quantity);
   }
 };
@@ -28,7 +28,7 @@ struct formatter<SellOrderType> {
   }
 
   template <typename FormatContext>
-  auto format(const SellOrderType & order_type, FormatContext & ctx) const {
+  auto format(SellOrderType const & order_type, FormatContext & ctx) const {
     return ::fmt::format_to(ctx.out(), "{}", to_string(order_type));
   }
 };
@@ -41,7 +41,7 @@ struct formatter<SellOrderInfo> {
   }
 
   template <typename FormatContext>
-  auto format(const SellOrderInfo & order, FormatContext & ctx) const {
+  auto format(SellOrderInfo const & order, FormatContext & ctx) const {
     std::string_view const order_type_str = order.type == SellOrderType::Auction ? "on auction " : "";
 
     if (order.quantity == 1) {
@@ -240,7 +240,7 @@ std::string ViewSellOrders::execute(User const &, std::shared_ptr<SharedState> c
     return fmt::format("Failed to view sell orders with error: {}", result.error());
   }
   std::string output = "Sell orders:\n";
-  for (const auto & item : result.value()) {
+  for (auto const & item : result.value()) {
     output += fmt::format("- {}\n", item);
   }
   return output;

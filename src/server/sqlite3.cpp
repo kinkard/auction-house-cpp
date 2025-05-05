@@ -1,8 +1,7 @@
 #include "sqlite3.hpp"
 
-#include <sqlite3.h>
-
 #include <fmt/format.h>
+#include <sqlite3.h>
 
 Sqlite3::Sqlite3(sqlite3 * db) : db(db) {}
 Sqlite3::~Sqlite3() {

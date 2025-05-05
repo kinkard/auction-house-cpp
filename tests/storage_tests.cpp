@@ -13,11 +13,11 @@
 uint64_t constexpr expiration_time = 1609459200;
 std::string_view constexpr expiration_time_str = "2021-01-01 00:00";
 
-bool operator==(const UserItemInfo & lha, const UserItemInfo & rha) {
+bool operator==(UserItemInfo const & lha, UserItemInfo const & rha) {
   return lha.item_name == rha.item_name && lha.quantity == rha.quantity;
 }
 
-std::ostream & operator<<(std::ostream & os, const UserItemInfo & item) {
+std::ostream & operator<<(std::ostream & os, UserItemInfo const & item) {
   return os << fmt::format("UserItemInfo{{.item_name=\"{}\", .quantity={}}}", item.item_name, item.quantity);
 }
 
@@ -152,13 +152,13 @@ TEST_F(StorageTest, items) {
   ASSERT_FALSE(auction_service->withdraw(100, "item1", 10));
 }
 
-bool operator==(const SellOrderInfo & lhs, const SellOrderInfo & rhs) {
+bool operator==(SellOrderInfo const & lhs, SellOrderInfo const & rhs) {
   return lhs.id == rhs.id && lhs.seller_name == rhs.seller_name && lhs.item_name == rhs.item_name &&
          lhs.quantity == rhs.quantity && lhs.price == rhs.price && lhs.expiration_time == rhs.expiration_time &&
          lhs.type == rhs.type;
 }
 
-std::ostream & operator<<(std::ostream & os, const SellOrderInfo & order) {
+std::ostream & operator<<(std::ostream & os, SellOrderInfo const & order) {
   return os << fmt::format(
              "SellOrder{{.id={}, .user_name={}, .item_name={}, .quantity={}, .price={}, "
              ".expiration_time={}, .type={}}}",

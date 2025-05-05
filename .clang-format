@@ -11,9 +11,20 @@ AllowShortLoopsOnASingleLine: false
 ColumnLimit: 120
 Cpp11BracedListStyle: false
 DerivePointerAlignment: false
-IncludeBlocks: Preserve
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex:           '^"'
+    Priority:        0
+    SortPriority:    1
+  - Regex:           '^<.*\.(h|hpp|hxx)>'
+    Priority:        3
+  - Regex:           '^<'
+    Priority:        4
+  - Regex:           '.*'
+    Priority:        5
 IndentCaseLabels: false
 IndentPPDirectives: BeforeHash
 PointerAlignment: Middle
+QualifierAlignment: Right
 UseTab: Never
 ...
