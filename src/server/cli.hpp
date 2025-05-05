@@ -2,6 +2,7 @@
 
 #include <tl/expected.hpp>
 
+#include <cstdint>
 #include <string_view>
 
 // Command line arguments for the server
