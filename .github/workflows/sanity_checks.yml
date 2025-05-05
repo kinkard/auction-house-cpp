@@ -1,0 +1,26 @@
+name: Sanity Checks
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check formatting in src
+        uses: jidicula/clang-format-action@v4.15.0
+        with:
+          clang-format-version: '20'
+          check-path: 'src'
+
+      - name: Check formatting in tests
+        uses: jidicula/clang-format-action@v4.15.0
+        with:
+          clang-format-version: '20'
+          check-path: 'tests'
+
+      - name: Build and run tests
+        run: mkdir build && cd build && cmake .. && cmake --build . && ctest
